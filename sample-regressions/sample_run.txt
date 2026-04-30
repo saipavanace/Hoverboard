@@ -1,0 +1,6 @@
+INFO: regression started
+FAIL: uart_timeout waiting for TX empty
+FAIL: uart_timeout waiting for TX empty
+ERROR sim: assertion failed at tb_pcie.sv:120
+panic test timed out after 100us
+PASS: gpio_basic

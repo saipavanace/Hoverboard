@@ -9,6 +9,8 @@
 *.swo
 node_modules/
 dist/
+client/dist/
+server/data/
 build/
 __pycache__/
 *.pyc

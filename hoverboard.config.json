@@ -1,0 +1,15 @@
+{
+  "projectName": "Hoverboard",
+  "companyName": "Demo Org",
+  "regressionRoots": ["./sample-regressions"],
+  "releaseMetricWeights": {
+    "passRate": 0.25,
+    "functionalCov": 0.2,
+    "codeCov": 0.15,
+    "vrCov": 0.15,
+    "drClosure": 0.25
+  },
+  "branding": {
+    "accent": "#0d9488"
+  }
+}
