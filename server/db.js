@@ -125,6 +125,21 @@ CREATE TABLE IF NOT EXISTS iso_evidence (
 INSERT OR IGNORE INTO counters (key, value) VALUES ('dr', 0), ('vr', 0);
 `);
 
+/** Lightweight migrations for existing SQLite files */
+(() => {
+  const addCol = (table, name, defSql) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (cols.some((c) => c.name === name)) return;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${defSql}`);
+  };
+  addCol('drs', 'category', 'category TEXT');
+  addCol('drs', 'labels', 'labels TEXT');
+  addCol('drs', 'status', `status TEXT DEFAULT 'open'`);
+  addCol('drs', 'priority', 'priority TEXT');
+  addCol('vrs', 'category', 'category TEXT');
+  addCol('vrs', 'labels', 'labels TEXT');
+})();
+
 export function nextPublicId(prefix, counterKey) {
   const run = db.transaction(() => {
     db.prepare('UPDATE counters SET value = value + 1 WHERE key = ?').run(counterKey);

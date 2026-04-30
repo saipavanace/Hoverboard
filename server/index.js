@@ -13,6 +13,58 @@ import { binFailures } from './services/regressionBinning.js';
 import { computeReleaseReadiness } from './services/releaseProjection.js';
 import { loadConfig, saveConfig } from './config.js';
 
+function normalizeLabelInput(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+  if (typeof raw === 'string')
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  return [];
+}
+
+function parseLabelsJson(s) {
+  if (!s) return [];
+  try {
+    const x = JSON.parse(s);
+    return Array.isArray(x) ? x.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function validateRequirementCategory(category, cfg) {
+  const allowed = cfg.requirementCategories || [];
+  if (!category || typeof category !== 'string') return 'category is required';
+  const t = category.trim();
+  if (!allowed.length) return null;
+  if (!allowed.includes(t)) return `category must be one of: ${allowed.join(', ')}`;
+  return null;
+}
+
+function mapVrToClient(v) {
+  const linkStmt = db.prepare(`
+    SELECT dr.public_id FROM vr_dr_links v JOIN drs dr ON v.dr_id = dr.id WHERE v.vr_id = ?
+  `);
+  const staleStmt = db.prepare(`
+    SELECT MAX(dr.stale) AS s FROM vr_dr_links v JOIN drs dr ON v.dr_id = dr.id WHERE v.vr_id = ?
+  `);
+  let evidence_links = [];
+  try {
+    evidence_links = v.evidence_links ? JSON.parse(v.evidence_links) : [];
+  } catch {
+    evidence_links = [];
+  }
+  return {
+    ...v,
+    labels: parseLabelsJson(v.labels),
+    evidence_links,
+    linked_dr_public_ids: linkStmt.all(v.id).map((r) => r.public_id),
+    stale_from_dr: Boolean(staleStmt.get(v.id)?.s),
+  };
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -177,22 +229,38 @@ app.get('/api/spec-versions/:vid/html', async (req, res) => {
 
 /** --- DRs --- */
 app.post('/api/drs', (req, res) => {
-  const { specVersionId, excerpt, anchor_hint, asil } = req.body || {};
+  const body = req.body || {};
+  const { specVersionId, excerpt, anchor_hint, asil } = body;
   if (!specVersionId || !excerpt) {
     return res.status(400).json({ error: 'specVersionId and excerpt required' });
   }
+  const cfg = loadConfig();
+  const catErr = validateRequirementCategory(body.category, cfg);
+  if (catErr) return res.status(400).json({ error: catErr });
+
   const sv = db.prepare(`SELECT sv.*, s.id AS spec_id FROM spec_versions sv JOIN specs s ON sv.spec_id = s.id WHERE sv.id = ?`).get(specVersionId);
   if (!sv) return res.status(404).json({ error: 'spec version not found' });
 
+  const labelsJson = JSON.stringify(normalizeLabelInput(body.labels));
   const publicId = nextPublicId('DR', 'dr');
   const ins = db
     .prepare(
       `
-    INSERT INTO drs (public_id, spec_version_id, excerpt, anchor_hint, asil)
-    VALUES (?, ?, ?, ?, ?) RETURNING id
+    INSERT INTO drs (public_id, spec_version_id, excerpt, anchor_hint, asil, category, labels, status, priority)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
   `
     )
-    .get(publicId, specVersionId, String(excerpt).trim(), anchor_hint || null, asil || null);
+    .get(
+      publicId,
+      specVersionId,
+      String(excerpt).trim(),
+      anchor_hint || null,
+      asil || null,
+      body.category.trim(),
+      labelsJson,
+      body.status || 'open',
+      body.priority || null
+    );
 
   db.prepare(
     `INSERT INTO audit_log (entity_type, entity_id, action) VALUES ('DR', ?, 'CREATE')`
@@ -201,33 +269,78 @@ app.post('/api/drs', (req, res) => {
   res.status(201).json({ id: ins.id, public_id: publicId });
 });
 
-app.get('/api/drs', (_req, res) => {
-  const rows = db
-    .prepare(
-      `
+app.get('/api/drs', (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const category = String(req.query.category || '').trim() || null;
+  const status = String(req.query.status || '').trim() || null;
+  const priority = String(req.query.priority || '').trim() || null;
+
+  let sql = `
     SELECT drs.*, sv.version AS spec_version_label, sv.spec_id, s.identifier AS spec_identifier
     FROM drs
     JOIN spec_versions sv ON drs.spec_version_id = sv.id
     JOIN specs s ON sv.spec_id = s.id
-    ORDER BY drs.id DESC
-  `
-    )
-    .all();
-  res.json(rows);
+    WHERE 1=1`;
+  const params = [];
+  if (category) {
+    sql += ' AND drs.category = ?';
+    params.push(category);
+  }
+  if (status) {
+    sql += ' AND drs.status = ?';
+    params.push(status);
+  }
+  if (priority) {
+    sql += ' AND drs.priority = ?';
+    params.push(priority);
+  }
+  if (q) {
+    const qq = `%${q}%`;
+    sql +=
+      ' AND (drs.excerpt LIKE ? OR drs.public_id LIKE ? OR IFNULL(drs.labels, "") LIKE ? OR IFNULL(drs.category, "") LIKE ?)';
+    params.push(qq, qq, qq, qq);
+  }
+  sql += ' ORDER BY drs.id DESC';
+  const rows = db.prepare(sql).all(...params);
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      labels: parseLabelsJson(r.labels),
+    }))
+  );
 });
 
 /** --- VRs --- */
 app.post('/api/vrs', (req, res) => {
   const body = req.body || {};
-  const { title, description, drPublicIds } = body;
+  const { title, description } = body;
   if (!title) return res.status(400).json({ error: 'title required' });
+
+  const cfg = loadConfig();
+  const catErr = validateRequirementCategory(body.category, cfg);
+  if (catErr) return res.status(400).json({ error: catErr });
+
+  const ids = Array.isArray(body.drPublicIds) ? body.drPublicIds : [];
+  const findDr = db.prepare(`SELECT id FROM drs WHERE public_id = ?`);
+  const resolvedIds = [];
+  for (const pid of ids) {
+    const dr = findDr.get(pid);
+    if (dr) resolvedIds.push(dr.id);
+  }
+  if (resolvedIds.length === 0) {
+    return res.status(400).json({
+      error: 'At least one linked DR is required. Only existing DR public IDs can be linked.',
+    });
+  }
+
+  const labelsJson = JSON.stringify(normalizeLabelInput(body.labels));
 
   const publicId = nextPublicId('VR', 'vr');
   const vr = db
     .prepare(
       `
-    INSERT INTO vrs (public_id, title, description, status, priority, owner, location_scope, verification_method, milestone_gate, evidence_links, last_verified, asil)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+    INSERT INTO vrs (public_id, title, description, status, priority, owner, location_scope, verification_method, milestone_gate, evidence_links, last_verified, asil, category, labels)
+    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?) RETURNING id
   `
     )
     .get(
@@ -238,19 +351,16 @@ app.post('/api/vrs', (req, res) => {
       body.priority || null,
       body.owner || null,
       body.location_scope || null,
-      body.verification_method || null,
-      body.milestone_gate || null,
       body.evidence_links ? JSON.stringify(body.evidence_links) : null,
       body.last_verified || null,
-      body.asil || null
+      body.asil || null,
+      body.category.trim(),
+      labelsJson
     );
 
-  const ids = Array.isArray(drPublicIds) ? drPublicIds : [];
-  const findDr = db.prepare(`SELECT id FROM drs WHERE public_id = ?`);
-  const link = db.prepare(`INSERT OR IGNORE INTO vr_dr_links (vr_id, dr_id) VALUES (?, ?)`);
-  for (const pid of ids) {
-    const dr = findDr.get(pid);
-    if (dr) link.run(vr.id, dr.id);
+  const link = db.prepare(`INSERT INTO vr_dr_links (vr_id, dr_id) VALUES (?, ?)`);
+  for (const drId of resolvedIds) {
+    link.run(vr.id, drId);
   }
 
   db.prepare(
@@ -266,6 +376,12 @@ app.patch('/api/vrs/:publicId', (req, res) => {
   const existing = db.prepare(`SELECT * FROM vrs WHERE public_id = ?`).get(publicId);
   if (!existing) return res.status(404).json({ error: 'not found' });
 
+  const cfg = loadConfig();
+  if (body.category !== undefined) {
+    const err = validateRequirementCategory(body.category, cfg);
+    if (err) return res.status(400).json({ error: err });
+  }
+
   const fields = [
     'title',
     'description',
@@ -273,53 +389,80 @@ app.patch('/api/vrs/:publicId', (req, res) => {
     'priority',
     'owner',
     'location_scope',
-    'verification_method',
-    'milestone_gate',
     'last_verified',
     'asil',
     'evidence_links',
+    'category',
   ];
   const sets = [];
   const vals = [];
   for (const f of fields) {
     if (body[f] !== undefined) {
       sets.push(`${f} = ?`);
-      vals.push(f === 'evidence_links' ? JSON.stringify(body[f]) : body[f]);
+      if (f === 'evidence_links') vals.push(JSON.stringify(body[f]));
+      else vals.push(body[f]);
     }
+  }
+  if (body.labels !== undefined) {
+    sets.push(`labels = ?`);
+    vals.push(JSON.stringify(normalizeLabelInput(body.labels)));
   }
   sets.push(`updated_at = datetime('now')`);
   vals.push(publicId);
   db.prepare(`UPDATE vrs SET ${sets.join(', ')} WHERE public_id = ?`).run(...vals);
 
   if (Array.isArray(body.drPublicIds)) {
-    db.prepare(`DELETE FROM vr_dr_links WHERE vr_id = ?`).run(existing.id);
     const findDr = db.prepare(`SELECT id FROM drs WHERE public_id = ?`);
-    const link = db.prepare(`INSERT INTO vr_dr_links (vr_id, dr_id) VALUES (?, ?)`);
+    const resolved = [];
     for (const pid of body.drPublicIds) {
       const dr = findDr.get(pid);
-      if (dr) link.run(existing.id, dr.id);
+      if (dr) resolved.push(dr.id);
+    }
+    if (resolved.length === 0) {
+      return res.status(400).json({
+        error: 'At least one linked DR is required. Only existing DR public IDs can be linked.',
+      });
+    }
+    db.prepare(`DELETE FROM vr_dr_links WHERE vr_id = ?`).run(existing.id);
+    const link = db.prepare(`INSERT INTO vr_dr_links (vr_id, dr_id) VALUES (?, ?)`);
+    for (const drId of resolved) {
+      link.run(existing.id, drId);
     }
   }
 
   const row = db.prepare(`SELECT * FROM vrs WHERE public_id = ?`).get(publicId);
-  res.json(row);
+  res.json(mapVrToClient(row));
 });
 
-app.get('/api/vrs', (_req, res) => {
-  const vrs = db.prepare(`SELECT * FROM vrs ORDER BY id DESC`).all();
-  const linkStmt = db.prepare(`
-    SELECT dr.public_id FROM vr_dr_links v JOIN drs dr ON v.dr_id = dr.id WHERE v.vr_id = ?
-  `);
-  const staleStmt = db.prepare(`
-    SELECT MAX(dr.stale) AS s FROM vr_dr_links v JOIN drs dr ON v.dr_id = dr.id WHERE v.vr_id = ?
-  `);
-  const out = vrs.map((v) => ({
-    ...v,
-    evidence_links: v.evidence_links ? JSON.parse(v.evidence_links) : [],
-    linked_dr_public_ids: linkStmt.all(v.id).map((r) => r.public_id),
-    stale_from_dr: Boolean(staleStmt.get(v.id)?.s),
-  }));
-  res.json(out);
+app.get('/api/vrs', (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const category = String(req.query.category || '').trim() || null;
+  const status = String(req.query.status || '').trim() || null;
+  const priority = String(req.query.priority || '').trim() || null;
+
+  let sql = 'SELECT * FROM vrs WHERE 1=1';
+  const params = [];
+  if (category) {
+    sql += ' AND category = ?';
+    params.push(category);
+  }
+  if (status) {
+    sql += ' AND status = ?';
+    params.push(status);
+  }
+  if (priority) {
+    sql += ' AND priority = ?';
+    params.push(priority);
+  }
+  if (q) {
+    const qq = `%${q}%`;
+    sql +=
+      ' AND (title LIKE ? OR IFNULL(description, "") LIKE ? OR public_id LIKE ? OR IFNULL(labels, "") LIKE ? OR IFNULL(category, "") LIKE ?)';
+    params.push(qq, qq, qq, qq, qq);
+  }
+  sql += ' ORDER BY id DESC';
+  const vrs = db.prepare(sql).all(...params);
+  res.json(vrs.map(mapVrToClient));
 });
 
 /** --- Metrics & release --- */
@@ -481,7 +624,8 @@ app.get('/api/iso/traceability.csv', (_req, res) => {
     .prepare(
       `
     SELECT v.public_id AS vr_id, v.title AS vr_title, v.status AS vr_status, v.asil AS vr_asil,
-           d.public_id AS dr_id, d.excerpt AS dr_excerpt, d.stale AS dr_stale
+           v.category AS vr_category,
+           d.public_id AS dr_id, d.excerpt AS dr_excerpt, d.stale AS dr_stale, d.category AS dr_category
     FROM vrs v
     LEFT JOIN vr_dr_links l ON v.id = l.vr_id
     LEFT JOIN drs d ON l.dr_id = d.id
@@ -489,7 +633,8 @@ app.get('/api/iso/traceability.csv', (_req, res) => {
   `
     )
     .all();
-  const header = 'vr_id,vr_title,vr_status,vr_asil,dr_id,dr_excerpt,dr_stale\n';
+  const header =
+    'vr_id,vr_title,vr_status,vr_asil,vr_category,dr_id,dr_excerpt,dr_stale,dr_category\n';
   const body = rows
     .map((r) =>
       [
@@ -497,9 +642,11 @@ app.get('/api/iso/traceability.csv', (_req, res) => {
         csvEscape(r.vr_title),
         r.vr_status,
         r.vr_asil || '',
+        r.vr_category || '',
         r.dr_id || '',
         csvEscape((r.dr_excerpt || '').slice(0, 200)),
         r.dr_stale,
+        r.dr_category || '',
       ].join(',')
     )
     .join('\n');

@@ -11,6 +11,16 @@ const configPath =
 const defaults = {
   projectName: 'Hoverboard',
   companyName: 'Your org',
+  requirementCategories: [
+    'System',
+    'CHI',
+    'IOAIU',
+    'DVE',
+    'DCE',
+    'GIU',
+    'DMI',
+    'DII',
+  ],
   regressionRoots: ['./sample-regressions'],
   releaseMetricWeights: {
     passRate: 0.25,
@@ -37,6 +47,7 @@ export function loadConfig() {
   return {
     ...defaults,
     ...file,
+    requirementCategories: file.requirementCategories ?? defaults.requirementCategories,
     regressionRoots: file.regressionRoots ?? defaults.regressionRoots,
     releaseMetricWeights: {
       ...defaults.releaseMetricWeights,
@@ -51,6 +62,7 @@ export function saveConfig(partial) {
   const next = {
     ...current,
     ...partial,
+    requirementCategories: partial.requirementCategories ?? current.requirementCategories,
     releaseMetricWeights: {
       ...current.releaseMetricWeights,
       ...(partial.releaseMetricWeights || {}),

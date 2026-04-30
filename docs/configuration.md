@@ -8,6 +8,7 @@ Configuration merges defaults with `hoverboard.config.json` at the repository ro
 | --- | --- | --- |
 | `projectName` | string | Shown in the shell header and exports. |
 | `companyName` | string | Org label for reports / ISO bundles. |
+| `requirementCategories` | string[] | Allowed **category** values for both DRs and VRs (shown in dropdowns; API rejects values not in this list). |
 | `regressionRoots` | string[] | Relative or absolute directories scanned for `.log`, `.txt`, `.out` files when using **Scan regression paths**. Failure-like lines are extracted for binning previews. |
 | `releaseMetricWeights` | object | Weights for the combined release score (must sum sensibly to ~1): |
 | `releaseMetricWeights.passRate` | number | Weight for regression pass rate proxy. |

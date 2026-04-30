@@ -10,6 +10,15 @@ const json = async (path, opts = {}) => {
   return r.json();
 };
 
+function qsp(params = {}) {
+  const u = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && String(v).trim() !== '') u.set(k, String(v));
+  });
+  const s = u.toString();
+  return s ? `?${s}` : '';
+}
+
 export const api = {
   health: () => json('/api/health'),
   config: () => json('/api/config'),
@@ -26,9 +35,9 @@ export const api = {
   },
   specVersion: (vid) => json(`/api/spec-versions/${vid}`),
   specVersionHtml: (vid) => json(`/api/spec-versions/${vid}/html`),
-  drs: () => json('/api/drs'),
+  drs: (params) => json(`/api/drs${qsp(params)}`),
   createDr: (body) => json('/api/drs', { method: 'POST', body: JSON.stringify(body) }),
-  vrs: () => json('/api/vrs'),
+  vrs: (params) => json(`/api/vrs${qsp(params)}`),
   createVr: (body) => json('/api/vrs', { method: 'POST', body: JSON.stringify(body) }),
   patchVr: (publicId, body) =>
     json(`/api/vrs/${publicId}`, { method: 'PATCH', body: JSON.stringify(body) }),

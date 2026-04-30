@@ -12,14 +12,26 @@ export default function Specs() {
   const [detail, setDetail] = useState(null);
   const [html, setHtml] = useState(null);
   const [selection, setSelection] = useState('');
-  const [floatPos, setFloatPos] = useState(null);
   const viewerRef = useRef(null);
+  const [categories, setCategories] = useState([]);
+  const [drCategory, setDrCategory] = useState('');
+  const [drLabels, setDrLabels] = useState('');
+  const [drStatus, setDrStatus] = useState('open');
+  const [drPriority, setDrPriority] = useState('');
 
   const load = () =>
     api.specs().then(setSpecs).catch(() => setSpecs([]));
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    api.config().then((cfg) => {
+      const cats = cfg.requirementCategories || [];
+      setCategories(cats);
+      setDrCategory((c) => c || cats[0] || '');
+    });
   }, []);
 
   useEffect(() => {
@@ -38,24 +50,24 @@ export default function Specs() {
   function onMouseUpViewer() {
     const sel = window.getSelection?.()?.toString()?.trim() || '';
     setSelection(sel);
-    if (!sel || !viewerRef.current) {
-      setFloatPos(null);
-      return;
-    }
-    const range = window.getSelection()?.getRangeAt(0);
-    const rect = range?.getBoundingClientRect();
-    if (rect) setFloatPos({ top: rect.top + window.scrollY - 48, left: rect.left + window.scrollX });
   }
 
   async function createDr() {
     if (!activeVid || !selection) return;
+    if (!drCategory) {
+      alert('Choose a category for this DR.');
+      return;
+    }
     await api.createDr({
       specVersionId: activeVid,
       excerpt: selection,
       anchor_hint: 'selection',
+      category: drCategory,
+      labels: drLabels,
+      status: drStatus,
+      priority: drPriority || undefined,
     });
     setSelection('');
-    setFloatPos(null);
     window.getSelection()?.removeAllRanges();
     alert('DR created from selection.');
   }
@@ -210,6 +222,70 @@ export default function Specs() {
             )}
           </div>
 
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '0.65rem',
+              marginTop: '0.85rem',
+              padding: '0.85rem',
+              borderRadius: 10,
+              border: '1px solid var(--border)',
+              background: 'rgba(0,0,0,0.15)',
+            }}
+          >
+            <label>
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>DR category *</div>
+              <select
+                className="field-input"
+                value={drCategory}
+                onChange={(e) => setDrCategory(e.target.value)}
+              >
+                <option value="">Select…</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Labels (comma-separated)</div>
+              <input
+                className="field-input"
+                value={drLabels}
+                onChange={(e) => setDrLabels(e.target.value)}
+                placeholder="tag-a, tag-b"
+              />
+            </label>
+            <label>
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Status</div>
+              <select
+                className="field-input"
+                value={drStatus}
+                onChange={(e) => setDrStatus(e.target.value)}
+              >
+                <option value="open">open</option>
+                <option value="review">review</option>
+                <option value="closed">closed</option>
+              </select>
+            </label>
+            <label>
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Priority</div>
+              <select
+                className="field-input"
+                value={drPriority}
+                onChange={(e) => setDrPriority(e.target.value)}
+              >
+                <option value="">—</option>
+                <option value="P0">P0</option>
+                <option value="P1">P1</option>
+                <option value="P2">P2</option>
+                <option value="P3">P3</option>
+              </select>
+            </label>
+          </div>
+
           {detail.mime_type === 'application/pdf' ||
           detail.original_filename?.toLowerCase().endsWith('.pdf') ? (
             <iframe
@@ -259,20 +335,6 @@ export default function Specs() {
             </div>
           )}
 
-          {floatPos && selection && (
-            <div
-              style={{
-                position: 'absolute',
-                top: floatPos.top,
-                left: floatPos.left,
-                zIndex: 5,
-              }}
-            >
-              <button type="button" className="btn-primary" onClick={createDr}>
-                Create DR
-              </button>
-            </div>
-          )}
         </div>
       )}
     </>

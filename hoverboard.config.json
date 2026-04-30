@@ -1,7 +1,19 @@
 {
   "projectName": "Hoverboard",
   "companyName": "Demo Org",
-  "regressionRoots": ["./sample-regressions"],
+  "requirementCategories": [
+    "System",
+    "CHI",
+    "IOAIU",
+    "DVE",
+    "DCE",
+    "GIU",
+    "DMI",
+    "DII"
+  ],
+  "regressionRoots": [
+    "./sample-regressions"
+  ],
   "releaseMetricWeights": {
     "passRate": 0.25,
     "functionalCov": 0.2,
@@ -10,6 +22,7 @@
     "drClosure": 0.25
   },
   "branding": {
-    "accent": "#0d9488"
+    "accent": "#0d9488",
+    "logoUrl": null
   }
 }

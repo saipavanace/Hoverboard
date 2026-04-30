@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { useTheme } from '../theme/ThemeContext.jsx';
 
 const links = [
   { to: '/', label: 'Dashboard', end: true },
@@ -15,6 +16,7 @@ const links = [
 export default function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [cfg, setCfg] = useState(null);
+  const { theme, toggle } = useTheme();
 
   useEffect(() => {
     api.config().then(setCfg).catch(() => setCfg({}));
@@ -28,9 +30,10 @@ export default function AppLayout() {
         .shell { min-height: 100%; display: flex; flex-direction: column; }
         header.app-header {
           display: flex; align-items: center; justify-content: space-between;
+          gap: 0.75rem;
           padding: 0.85rem 1.25rem;
           border-bottom: 1px solid var(--border);
-          background: rgba(15, 20, 25, 0.85);
+          background: color-mix(in srgb, var(--surface) 92%, transparent);
           backdrop-filter: blur(12px);
           position: sticky; top: 0; z-index: 20;
         }
@@ -50,8 +53,14 @@ export default function AppLayout() {
         }
         nav.primary-nav a:hover { color: var(--text); background: rgba(255,255,255,0.06); }
         nav.primary-nav a.active {
-          color: #04110f;
+          color: var(--nav-active-fg);
           background: ${accent};
+        }
+        header .hdr-tools {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          flex-wrap: wrap;
         }
         .burger {
           display: none;
@@ -94,21 +103,35 @@ export default function AppLayout() {
           <h1 style={{ color: accent }}>Hoverboard</h1>
           <span>{cfg?.projectName || 'Requirements & verification'}</span>
         </div>
-        <button
-          type="button"
-          className="burger"
-          aria-label="Menu"
-          onClick={() => setMenuOpen((o) => !o)}
-        >
-          Menu
-        </button>
-        <nav className="primary-nav">
-          {links.map((l) => (
-            <NavLink key={l.to} to={l.to} end={l.end} onClick={() => setMenuOpen(false)}>
-              {l.label}
-            </NavLink>
-          ))}
-        </nav>
+        <div className="hdr-tools">
+          <div className="theme-toggle" title="Appearance">
+            <span>Dark</span>
+            <button
+              type="button"
+              className="theme-toggle-track"
+              onClick={toggle}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              <span className={`theme-toggle-thumb ${theme === 'light' ? 'light' : ''}`} />
+            </button>
+            <span>Light</span>
+          </div>
+          <button
+            type="button"
+            className="burger"
+            aria-label="Menu"
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            Menu
+          </button>
+          <nav className="primary-nav">
+            {links.map((l) => (
+              <NavLink key={l.to} to={l.to} end={l.end} onClick={() => setMenuOpen(false)}>
+                {l.label}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
       </header>
       <main className="page-main">
         <Outlet />
