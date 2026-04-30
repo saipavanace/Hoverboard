@@ -1,0 +1,16 @@
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.swp
+*.swo
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+venv/
