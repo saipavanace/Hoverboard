@@ -10,8 +10,10 @@
     "lint": "eslint src --ext js,jsx"
   },
   "dependencies": {
+    "pdfjs-dist": "^4.10.38",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-pdf": "^9.2.1",
     "react-router-dom": "^7.1.1",
     "recharts": "^2.15.0"
   },

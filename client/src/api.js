@@ -23,8 +23,10 @@ export const api = {
   health: () => json('/api/health'),
   config: () => json('/api/config'),
   saveConfig: (body) => json('/api/config', { method: 'PUT', body: JSON.stringify(body) }),
-  specs: () => json('/api/specs'),
+  specs: (params) => json(`/api/specs${qsp(params)}`),
   createSpec: (body) => json('/api/specs', { method: 'POST', body: JSON.stringify(body) }),
+  deleteSpec: (id) => json(`/api/specs/${id}`, { method: 'DELETE' }),
+  drPeek: () => json('/api/drs/peek'),
   uploadVersion: async (specId, version, file) => {
     const fd = new FormData();
     fd.append('file', file);
@@ -49,6 +51,24 @@ export const api = {
   ingestRegressions: (body) =>
     json('/api/regressions/ingest', { method: 'POST', body: JSON.stringify(body) }),
   scanRegressionPaths: () => json('/api/regressions/scan-paths', { method: 'POST' }),
+  ingestRegressionDir: (path) =>
+    json('/api/regressions/ingest-directory', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  ingestCoverageDir: (path, runId) =>
+    json('/api/coverage/ingest-directory', {
+      method: 'POST',
+      body: JSON.stringify({ path, runId }),
+    }),
+  scanVrCoverageDir: (path, strictUvmInfo = true) =>
+    json('/api/vr-coverage/scan-directory', {
+      method: 'POST',
+      body: JSON.stringify({ path, strictUvmInfo }),
+    }),
+  coverageSummary: () => json('/api/coverage/summary'),
+  vrCoverage: () => json('/api/vr-coverage'),
+  drCoverage: () => json('/api/dr-coverage'),
   isoAudit: () => json('/api/iso/audit-log'),
   demoSeed: () => json('/api/demo/seed', { method: 'POST' }),
 };

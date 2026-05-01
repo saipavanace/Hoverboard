@@ -33,6 +33,24 @@ const defaults = {
     accent: '#0d9488',
     logoUrl: null,
   },
+  regressionParsers: [
+    { name: 'fail', regex: 'FAIL\\b' },
+    { name: 'error', regex: 'ERROR\\b' },
+    { name: 'assert', regex: 'ASSERT' },
+    { name: 'timeout', regex: 'timeout' },
+    { name: 'fatal', regex: 'UVM_FATAL' },
+  ],
+  coverageRegex: {
+    functional: [
+      'functional\\s*coverage\\s*[:=]\\s*([0-9]+(?:\\.[0-9]+)?)\\s*%?',
+      '\\bfcov\\s*[:=]\\s*([0-9]+(?:\\.[0-9]+)?)\\s*%?',
+    ],
+    code: [
+      'code\\s*coverage\\s*[:=]\\s*([0-9]+(?:\\.[0-9]+)?)\\s*%?',
+      '\\bccov\\s*[:=]\\s*([0-9]+(?:\\.[0-9]+)?)\\s*%?',
+    ],
+  },
+  vrLogRegex: '(?:UVM_INFO|uvm_info|UVM_NOTE)[\\s\\S]{0,200}?\\b(VR-\\d{3,8})\\b',
 };
 
 export function loadConfig() {
@@ -49,6 +67,9 @@ export function loadConfig() {
     ...file,
     requirementCategories: file.requirementCategories ?? defaults.requirementCategories,
     regressionRoots: file.regressionRoots ?? defaults.regressionRoots,
+    regressionParsers: file.regressionParsers ?? defaults.regressionParsers,
+    coverageRegex: { ...defaults.coverageRegex, ...(file.coverageRegex || {}) },
+    vrLogRegex: file.vrLogRegex ?? defaults.vrLogRegex,
     releaseMetricWeights: {
       ...defaults.releaseMetricWeights,
       ...(file.releaseMetricWeights || {}),

@@ -6,6 +6,7 @@ import DRs from './pages/DRs.jsx';
 import VRs from './pages/VRs.jsx';
 import Signatures from './pages/Signatures.jsx';
 import Diagnostics from './pages/Diagnostics.jsx';
+import Regressions from './pages/Regressions.jsx';
 import ISO from './pages/ISO.jsx';
 import Settings from './pages/Settings.jsx';
 
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="vrs" element={<VRs />} />
         <Route path="signatures" element={<Signatures />} />
         <Route path="signatures/:key" element={<Diagnostics />} />
+        <Route path="regressions" element={<Regressions />} />
         <Route path="iso" element={<ISO />} />
         <Route path="settings" element={<Settings />} />
       </Route>

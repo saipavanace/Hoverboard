@@ -12,6 +12,9 @@ import { markStaleForNewVersion } from './services/stale.js';
 import { binFailures } from './services/regressionBinning.js';
 import { computeReleaseReadiness } from './services/releaseProjection.js';
 import { loadConfig, saveConfig } from './config.js';
+import { scanRegressionDirectory } from './services/regressionAdapter.js';
+import { scanCoverageDirectory } from './services/coverageAdapter.js';
+import { scanDirectory as scanVrDirectory } from './services/vrCoverage.js';
 
 function normalizeLabelInput(raw) {
   if (!raw) return [];
@@ -50,18 +53,22 @@ function mapVrToClient(v) {
   const staleStmt = db.prepare(`
     SELECT MAX(dr.stale) AS s FROM vr_dr_links v JOIN drs dr ON v.dr_id = dr.id WHERE v.vr_id = ?
   `);
+  const covStmt = db.prepare(`SELECT hits FROM vr_coverage WHERE vr_id = ?`);
   let evidence_links = [];
   try {
     evidence_links = v.evidence_links ? JSON.parse(v.evidence_links) : [];
   } catch {
     evidence_links = [];
   }
+  const cov = covStmt.get(v.id);
   return {
     ...v,
     labels: parseLabelsJson(v.labels),
     evidence_links,
     linked_dr_public_ids: linkStmt.all(v.id).map((r) => r.public_id),
     stale_from_dr: Boolean(staleStmt.get(v.id)?.s),
+    coverage_hits: cov?.hits || 0,
+    covered: Boolean(cov && cov.hits > 0),
   };
 }
 
@@ -95,21 +102,39 @@ app.put('/api/config', (req, res) => {
 });
 
 /** --- Specs --- */
+function normalizeFolderPath(p) {
+  if (!p) return null;
+  const cleaned = String(p)
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join('/');
+  return cleaned || null;
+}
+
 app.post('/api/specs', (req, res) => {
   const { name, identifier } = req.body || {};
   if (!name || !identifier) {
     return res.status(400).json({ error: 'name and identifier required' });
   }
+  const folder = normalizeFolderPath(req.body?.folder_path);
+  const description = req.body?.description ? String(req.body.description) : null;
   try {
     const r = db
       .prepare(
-        `INSERT INTO specs (identifier, name) VALUES (?, ?) RETURNING id`
+        `INSERT INTO specs (identifier, name, folder_path, description) VALUES (?, ?, ?, ?) RETURNING id`
       )
-      .get(identifier.trim(), name.trim());
+      .get(identifier.trim(), name.trim(), folder, description);
     db.prepare(
       `INSERT INTO audit_log (entity_type, entity_id, action) VALUES ('SPEC', ?, 'CREATE')`
     ).run(String(r.id));
-    res.status(201).json({ id: r.id, identifier: identifier.trim(), name: name.trim() });
+    res.status(201).json({
+      id: r.id,
+      identifier: identifier.trim(),
+      name: name.trim(),
+      folder_path: folder,
+      description,
+    });
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) {
       return res.status(409).json({ error: 'identifier already exists' });
@@ -118,8 +143,17 @@ app.post('/api/specs', (req, res) => {
   }
 });
 
-app.get('/api/specs', (_req, res) => {
-  const specs = db.prepare(`SELECT * FROM specs ORDER BY id DESC`).all();
+app.get('/api/specs', (req, res) => {
+  const q = String(req.query.q || '').trim();
+  let sql = `SELECT * FROM specs WHERE 1=1`;
+  const params = [];
+  if (q) {
+    const qq = `%${q}%`;
+    sql += ' AND (name LIKE ? OR identifier LIKE ? OR IFNULL(folder_path, "") LIKE ?)';
+    params.push(qq, qq, qq);
+  }
+  sql += ' ORDER BY id DESC';
+  const specs = db.prepare(sql).all(...params);
   const out = specs.map((s) => {
     const versions = db
       .prepare(
@@ -196,6 +230,55 @@ app.post('/api/specs/:specId/versions', upload.single('file'), async (req, res) 
   });
 });
 
+app.delete('/api/specs/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const spec = db.prepare(`SELECT * FROM specs WHERE id = ?`).get(id);
+  if (!spec) return res.status(404).json({ error: 'spec not found' });
+
+  const versions = db.prepare(`SELECT id, storage_path FROM spec_versions WHERE spec_id = ?`).all(id);
+  const versionIds = versions.map((v) => v.id);
+
+  const remove = db.transaction(() => {
+    if (versionIds.length) {
+      const placeholders = versionIds.map(() => '?').join(',');
+      const drsRows = db
+        .prepare(`SELECT id FROM drs WHERE spec_version_id IN (${placeholders})`)
+        .all(...versionIds);
+      const drIds = drsRows.map((r) => r.id);
+      if (drIds.length) {
+        const drPh = drIds.map(() => '?').join(',');
+        db.prepare(`DELETE FROM vr_dr_links WHERE dr_id IN (${drPh})`).run(...drIds);
+        db.prepare(`DELETE FROM drs WHERE id IN (${drPh})`).run(...drIds);
+      }
+      db.prepare(`DELETE FROM spec_versions WHERE id IN (${placeholders})`).run(...versionIds);
+    }
+    db.prepare(`UPDATE specs SET latest_version_id = NULL WHERE id = ?`).run(id);
+    db.prepare(`DELETE FROM specs WHERE id = ?`).run(id);
+  });
+
+  try {
+    remove();
+  } catch (e) {
+    return res.status(500).json({ error: `delete failed: ${e.message}` });
+  }
+
+  for (const v of versions) {
+    if (!v.storage_path) continue;
+    const p = path.join(uploadsDir, path.basename(v.storage_path));
+    try {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  db.prepare(
+    `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('SPEC', ?, 'DELETE', ?)`
+  ).run(String(id), JSON.stringify({ name: spec.name, identifier: spec.identifier }));
+
+  res.json({ ok: true, deletedSpec: spec.identifier, removedVersions: versionIds.length });
+});
+
 app.get('/api/spec-versions/:vid', (req, res) => {
   const vid = Number(req.params.vid);
   const row = db.prepare(`SELECT * FROM spec_versions WHERE id = ?`).get(vid);
@@ -228,6 +311,12 @@ app.get('/api/spec-versions/:vid/html', async (req, res) => {
 });
 
 /** --- DRs --- */
+app.get('/api/drs/peek', (_req, res) => {
+  const row = db.prepare(`SELECT value FROM counters WHERE key = 'dr'`).get();
+  const next = (row?.value || 0) + 1;
+  res.json({ next_public_id: `DR-${String(next).padStart(5, '0')}` });
+});
+
 app.post('/api/drs', (req, res) => {
   const body = req.body || {};
   const { specVersionId, excerpt, anchor_hint, asil } = body;
@@ -238,16 +327,25 @@ app.post('/api/drs', (req, res) => {
   const catErr = validateRequirementCategory(body.category, cfg);
   if (catErr) return res.status(400).json({ error: catErr });
 
-  const sv = db.prepare(`SELECT sv.*, s.id AS spec_id FROM spec_versions sv JOIN specs s ON sv.spec_id = s.id WHERE sv.id = ?`).get(specVersionId);
+  const sv = db
+    .prepare(
+      `SELECT sv.*, s.id AS spec_id, s.identifier AS spec_identifier, s.name AS spec_name
+       FROM spec_versions sv JOIN specs s ON sv.spec_id = s.id WHERE sv.id = ?`
+    )
+    .get(specVersionId);
   if (!sv) return res.status(404).json({ error: 'spec version not found' });
 
   const labelsJson = JSON.stringify(normalizeLabelInput(body.labels));
+  const specReference =
+    body.spec_reference?.trim() ||
+    `${sv.spec_name} · v${sv.version} · ${sv.spec_identifier}`;
+
   const publicId = nextPublicId('DR', 'dr');
   const ins = db
     .prepare(
       `
-    INSERT INTO drs (public_id, spec_version_id, excerpt, anchor_hint, asil, category, labels, status, priority)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+    INSERT INTO drs (public_id, spec_version_id, excerpt, anchor_hint, asil, category, labels, status, priority, description, comments, spec_reference)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
   `
     )
     .get(
@@ -259,14 +357,17 @@ app.post('/api/drs', (req, res) => {
       body.category.trim(),
       labelsJson,
       body.status || 'open',
-      body.priority || null
+      body.priority || null,
+      body.description || null,
+      body.comments || null,
+      specReference
     );
 
   db.prepare(
     `INSERT INTO audit_log (entity_type, entity_id, action) VALUES ('DR', ?, 'CREATE')`
   ).run(publicId);
 
-  res.status(201).json({ id: ins.id, public_id: publicId });
+  res.status(201).json({ id: ins.id, public_id: publicId, spec_reference: specReference });
 });
 
 app.get('/api/drs', (req, res) => {
@@ -470,16 +571,40 @@ app.get('/api/metrics', (_req, res) => {
   const drTotal = db.prepare(`SELECT COUNT(*) AS n FROM drs`).get().n;
   const drStale = db.prepare(`SELECT COUNT(*) AS n FROM drs WHERE stale = 1`).get().n;
   const vrTotal = db.prepare(`SELECT COUNT(*) AS n FROM vrs`).get().n;
-  const vrDone = db
-    .prepare(`SELECT COUNT(*) AS n FROM vrs WHERE status IN ('done', 'closed')`)
+  const vrCovered = db
+    .prepare(`SELECT COUNT(*) AS n FROM vr_coverage WHERE hits > 0`)
     .get().n;
   const sigs = db.prepare(`SELECT COUNT(*) AS n FROM regression_signatures`).get().n;
 
-  const functionalCoverage = Math.min(100, sigs * 2 + 40);
-  const codeCoverage = Math.min(100, drTotal * 3 + 35);
-  const vrCoverage = vrTotal ? Math.round((vrDone / vrTotal) * 100) : 0;
-  const drClosure = drTotal ? Math.round(((drTotal - drStale) / drTotal) * 100) : 0;
-  const passRate = 92 + (vrDone % 7);
+  const fnRow = db
+    .prepare(
+      `SELECT value FROM coverage_metrics WHERE kind = 'functional' ORDER BY id DESC LIMIT 1`
+    )
+    .get();
+  const cdRow = db
+    .prepare(`SELECT value FROM coverage_metrics WHERE kind = 'code' ORDER BY id DESC LIMIT 1`)
+    .get();
+  const functionalCoverage = fnRow ? Math.round(Number(fnRow.value)) : 0;
+  const codeCoverage = cdRow ? Math.round(Number(cdRow.value)) : 0;
+  const vrCoverage = vrTotal ? Math.round((vrCovered / vrTotal) * 100) : 0;
+
+  const drCovered = (() => {
+    const rows = db
+      .prepare(
+        `
+        SELECT dr.id,
+               (SELECT COUNT(*) FROM vr_dr_links l WHERE l.dr_id = dr.id) AS link_count,
+               (SELECT COUNT(*) FROM vr_dr_links l
+                  JOIN vr_coverage c ON c.vr_id = l.vr_id
+                  WHERE l.dr_id = dr.id AND c.hits > 0) AS covered_count
+        FROM drs dr
+      `
+      )
+      .all();
+    return rows.filter((r) => r.link_count > 0 && r.covered_count === r.link_count).length;
+  })();
+  const drClosure = drTotal ? Math.round((drCovered / drTotal) * 100) : 0;
+  const passRate = 92 + (vrCovered % 7);
 
   const cfg = loadConfig();
   const readiness = computeReleaseReadiness(
@@ -501,8 +626,9 @@ app.get('/api/metrics', (_req, res) => {
     drCoverage: drClosure,
     drTotal,
     drStale,
+    drCovered,
     vrTotal,
-    vrDone,
+    vrCovered,
     regressionSignatures: sigs,
     passRate,
     releaseReadiness: readiness,
@@ -578,6 +704,151 @@ app.get('/api/regressions/signatures/:key', (req, res) => {
     .prepare(`SELECT * FROM regression_activity WHERE signature_id = ? ORDER BY id DESC LIMIT 100`)
     .all(row.id);
   res.json({ ...row, activity: acts });
+});
+
+/** Ingest from a server-visible regression directory using configured adapter */
+app.post('/api/regressions/ingest-directory', (req, res) => {
+  const dir = String(req.body?.path || '').trim();
+  if (!dir) return res.status(400).json({ error: 'path required' });
+  if (!fs.existsSync(dir)) {
+    return res.status(404).json({ error: `directory not visible to API: ${dir}` });
+  }
+  const cfg = loadConfig();
+  const result = scanRegressionDirectory(dir, { patterns: cfg.regressionParsers });
+  let inserted = 0;
+  const upsert = db.prepare(`
+    INSERT INTO regression_signatures (signature_key, title, category, class, state, total, trend_json)
+    VALUES (@signature_key, @title, 'regression', 'fail', 'OPEN', @total, @trend_json)
+    ON CONFLICT(signature_key) DO UPDATE SET
+      total = regression_signatures.total + excluded.total,
+      title = excluded.title
+  `);
+  for (const b of result.bins) {
+    upsert.run({
+      signature_key: b.signature_key,
+      title: b.title,
+      total: b.total,
+      trend_json: JSON.stringify([b.total]),
+    });
+    inserted++;
+    const sig = db
+      .prepare(`SELECT id FROM regression_signatures WHERE signature_key = ?`)
+      .get(b.signature_key);
+    db.prepare(
+      `INSERT INTO regression_activity (signature_id, action, reference, state) VALUES (?, ?, ?, ?)`
+    ).run(sig.id, 'directory ingest', dir, 'OPEN');
+  }
+  db.prepare(
+    `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('REGRESSION', ?, 'INGEST_DIR', ?)`
+  ).run(dir, JSON.stringify({ filesScanned: result.filesScanned, failures: result.failures, bins: inserted }));
+  res.json({ ok: true, ...result, signaturesUpserted: inserted });
+});
+
+/** Coverage from a server-visible directory */
+app.post('/api/coverage/ingest-directory', (req, res) => {
+  const dir = String(req.body?.path || '').trim();
+  if (!dir) return res.status(400).json({ error: 'path required' });
+  if (!fs.existsSync(dir)) {
+    return res.status(404).json({ error: `directory not visible to API: ${dir}` });
+  }
+  const cfg = loadConfig();
+  const result = scanCoverageDirectory(dir, { regex: cfg.coverageRegex });
+  const insert = db.prepare(
+    `INSERT INTO coverage_metrics (kind, value, source, run_id) VALUES (?, ?, ?, ?)`
+  );
+  if (result.functional != null) insert.run('functional', result.functional, dir, req.body?.runId || null);
+  if (result.code != null) insert.run('code', result.code, dir, req.body?.runId || null);
+  res.json({ ok: true, ...result });
+});
+
+app.get('/api/coverage/summary', (_req, res) => {
+  const fn = db
+    .prepare(
+      `SELECT value FROM coverage_metrics WHERE kind = 'functional' ORDER BY id DESC LIMIT 1`
+    )
+    .get();
+  const cd = db
+    .prepare(`SELECT value FROM coverage_metrics WHERE kind = 'code' ORDER BY id DESC LIMIT 1`)
+    .get();
+  res.json({
+    functional: fn ? Number(fn.value) : null,
+    code: cd ? Number(cd.value) : null,
+  });
+});
+
+/** VR coverage scan: greps logs in a directory for VR IDs in uvm_info-like lines */
+app.post('/api/vr-coverage/scan-directory', (req, res) => {
+  const dir = String(req.body?.path || '').trim();
+  if (!dir) return res.status(400).json({ error: 'path required' });
+  if (!fs.existsSync(dir)) {
+    return res.status(404).json({ error: `directory not visible to API: ${dir}` });
+  }
+  const cfg = loadConfig();
+  const strict = req.body?.strictUvmInfo !== false;
+  const result = scanVrDirectory(dir, { regex: cfg.vrLogRegex, strictUvmInfo: strict });
+
+  const findVr = db.prepare(`SELECT id FROM vrs WHERE public_id = ?`);
+  const upsert = db.prepare(`
+    INSERT INTO vr_coverage (vr_id, hits, source, last_seen_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(vr_id) DO UPDATE SET
+      hits = vr_coverage.hits + excluded.hits,
+      source = excluded.source,
+      last_seen_at = datetime('now')
+  `);
+  const matched = [];
+  const unmatched = [];
+  for (const [vrPid, n] of result.hits.entries()) {
+    const row = findVr.get(vrPid);
+    if (row) {
+      upsert.run(row.id, n, dir);
+      matched.push({ vr_public_id: vrPid, hits: n });
+    } else {
+      unmatched.push({ vr_public_id: vrPid, hits: n });
+    }
+  }
+  db.prepare(
+    `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('VR_COVERAGE', ?, 'SCAN', ?)`
+  ).run(dir, JSON.stringify({ matchedCount: matched.length, unmatchedCount: unmatched.length, files: result.files }));
+  res.json({ ok: true, files: result.files, matched, unmatched });
+});
+
+app.get('/api/vr-coverage', (_req, res) => {
+  const rows = db
+    .prepare(
+      `
+    SELECT v.public_id AS vr_public_id, c.hits, c.source, c.last_seen_at
+    FROM vrs v
+    LEFT JOIN vr_coverage c ON c.vr_id = v.id
+    ORDER BY v.id DESC
+  `
+    )
+    .all();
+  res.json(rows);
+});
+
+app.get('/api/dr-coverage', (_req, res) => {
+  const drs = db.prepare(`SELECT id, public_id FROM drs ORDER BY id DESC`).all();
+  const linkedVrs = db.prepare(`
+    SELECT vr.id AS vr_id, COALESCE(c.hits, 0) AS hits
+    FROM vr_dr_links l
+    JOIN vrs vr ON vr.id = l.vr_id
+    LEFT JOIN vr_coverage c ON c.vr_id = vr.id
+    WHERE l.dr_id = ?
+  `);
+  const out = drs.map((dr) => {
+    const links = linkedVrs.all(dr.id);
+    const totalLinkedVrs = links.length;
+    const coveredVrs = links.filter((l) => l.hits > 0).length;
+    const covered = totalLinkedVrs > 0 && coveredVrs === totalLinkedVrs;
+    return {
+      dr_public_id: dr.public_id,
+      total_linked_vrs: totalLinkedVrs,
+      covered_vrs: coveredVrs,
+      covered,
+    };
+  });
+  res.json(out);
 });
 
 /** Scan configurable regression roots (paths); collect sample failure files if present */

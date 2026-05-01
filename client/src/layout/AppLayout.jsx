@@ -9,6 +9,7 @@ const links = [
   { to: '/drs', label: 'Design reqs' },
   { to: '/vrs', label: 'Verification' },
   { to: '/signatures', label: 'Signatures' },
+  { to: '/regressions', label: 'Regressions' },
   { to: '/iso', label: 'ISO 26262' },
   { to: '/settings', label: 'Settings' },
 ];

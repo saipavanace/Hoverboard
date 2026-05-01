@@ -136,9 +136,33 @@ INSERT OR IGNORE INTO counters (key, value) VALUES ('dr', 0), ('vr', 0);
   addCol('drs', 'labels', 'labels TEXT');
   addCol('drs', 'status', `status TEXT DEFAULT 'open'`);
   addCol('drs', 'priority', 'priority TEXT');
+  addCol('drs', 'description', 'description TEXT');
+  addCol('drs', 'comments', 'comments TEXT');
+  addCol('drs', 'spec_reference', 'spec_reference TEXT');
   addCol('vrs', 'category', 'category TEXT');
   addCol('vrs', 'labels', 'labels TEXT');
+  addCol('specs', 'folder_path', 'folder_path TEXT');
+  addCol('specs', 'description', 'description TEXT');
 })();
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS coverage_metrics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,          -- 'functional' | 'code'
+  value REAL NOT NULL,         -- 0..100
+  source TEXT,
+  run_id TEXT,
+  captured_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS vr_coverage (
+  vr_id INTEGER PRIMARY KEY,
+  hits INTEGER NOT NULL DEFAULT 0,
+  source TEXT,
+  last_seen_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (vr_id) REFERENCES vrs(id) ON DELETE CASCADE
+);
+`);
 
 export function nextPublicId(prefix, counterKey) {
   const run = db.transaction(() => {

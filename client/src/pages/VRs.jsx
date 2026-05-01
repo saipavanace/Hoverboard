@@ -29,6 +29,7 @@ export default function VRs() {
   const [linkedDrIds, setLinkedDrIds] = useState([]);
   const [drSearch, setDrSearch] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [drPickerFeedback, setDrPickerFeedback] = useState('');
 
   useEffect(() => {
     api.vrs(filters).then(setVrs).catch(() => setVrs([]));
@@ -77,6 +78,36 @@ export default function VRs() {
     setLinkedDrIds((s) => s.filter((x) => x !== pid));
   }
 
+  function attemptLinkTypedDr() {
+    const raw = drSearch.trim();
+    setDrPickerFeedback('');
+    if (!raw) return;
+
+    const alreadyLinked = linkedDrIds.some((id) => id.toLowerCase() === raw.toLowerCase());
+    if (alreadyLinked) {
+      setDrPickerFeedback('This DR is already linked.');
+      return;
+    }
+
+    const exact = allDrs.find((d) => d.public_id.toLowerCase() === raw.toLowerCase());
+    if (exact && !linkedDrIds.includes(exact.public_id)) {
+      addDr(exact.public_id);
+      return;
+    }
+
+    if (drChoices.length === 1) {
+      addDr(drChoices[0].public_id);
+      return;
+    }
+
+    if (drChoices.length > 1) {
+      setDrPickerFeedback('Multiple matches — choose from the list or type the full DR ID.');
+      return;
+    }
+
+    setDrPickerFeedback('Not found. That DR does not exist — create it first or check the ID.');
+  }
+
   const canSave = form.title.trim() && form.category && linkedDrIds.length > 0;
 
   return (
@@ -87,73 +118,6 @@ export default function VRs() {
         <strong>existing</strong> DR — pick from the typeahead (unknown IDs cannot be saved). Optional
         ASIL is available under ISO reporting when needed.
       </p>
-
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Filters</div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '0.65rem',
-            alignItems: 'end',
-          }}
-        >
-          <label>
-            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Search</div>
-            <input
-              className="field-input"
-              value={filters.q}
-              placeholder="Keywords…"
-              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-            />
-          </label>
-          <label>
-            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Category</div>
-            <select
-              className="field-input"
-              value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            >
-              <option value="">All</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Status</div>
-            <select
-              className="field-input"
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            >
-              <option value="">All</option>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Priority</div>
-            <select
-              className="field-input"
-              value={filters.priority}
-              onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-            >
-              <option value="">All</option>
-              {PRIORITY_OPTIONS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Create VR</div>
@@ -257,32 +221,67 @@ export default function VRs() {
             <input
               className="field-input"
               value={drSearch}
-              placeholder="Type to filter DRs by ID or excerpt…"
+              placeholder="Type to filter, or full DR ID — press Enter to add"
+              aria-invalid={Boolean(drPickerFeedback)}
               onChange={(e) => {
                 setDrSearch(e.target.value);
+                setDrPickerFeedback('');
                 setPickerOpen(true);
               }}
               onFocus={() => setPickerOpen(true)}
               onBlur={() => setTimeout(() => setPickerOpen(false), 180)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  attemptLinkTypedDr();
+                }
+              }}
             />
-            {pickerOpen && drChoices.length > 0 && (
+            {pickerOpen && drSearch.trim() && (
               <div className="dr-picker-panel" role="listbox">
-                {drChoices.map((d) => (
-                  <button
-                    key={d.public_id}
-                    type="button"
-                    className="dr-picker-option"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => addDr(d.public_id)}
+                {drChoices.length > 0 ? (
+                  drChoices.map((d) => (
+                    <button
+                      key={d.public_id}
+                      type="button"
+                      className="dr-picker-option"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        addDr(d.public_id);
+                        setDrPickerFeedback('');
+                      }}
+                    >
+                      <strong>{d.public_id}</strong>{' '}
+                      <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>
+                        {(d.excerpt || '').slice(0, 80)}
+                        {(d.excerpt || '').length > 80 ? '…' : ''}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div
+                    style={{
+                      padding: '0.65rem',
+                      fontSize: '0.85rem',
+                      color: 'var(--muted)',
+                    }}
                   >
-                    <strong>{d.public_id}</strong>{' '}
-                    <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>
-                      {(d.excerpt || '').slice(0, 80)}
-                      {(d.excerpt || '').length > 80 ? '…' : ''}
-                    </span>
-                  </button>
-                ))}
+                    No matching DRs in this filter.
+                  </div>
+                )}
               </div>
+            )}
+            {drPickerFeedback && (
+              <p
+                role="alert"
+                style={{
+                  margin: '0.35rem 0 0',
+                  fontSize: '0.85rem',
+                  color: 'var(--danger)',
+                }}
+              >
+                {drPickerFeedback}
+              </p>
             )}
             <div className="dr-chip-wrap">
               {linkedDrIds.map((pid) => (
@@ -355,6 +354,73 @@ export default function VRs() {
             Title, category, and at least one linked DR are required.
           </p>
         )}
+      </div>
+
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Filters</div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+            gap: '0.65rem',
+            alignItems: 'end',
+          }}
+        >
+          <label>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Search</div>
+            <input
+              className="field-input"
+              value={filters.q}
+              placeholder="Keywords…"
+              onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+            />
+          </label>
+          <label>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Category</div>
+            <select
+              className="field-input"
+              value={filters.category}
+              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+            >
+              <option value="">All</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Status</div>
+            <select
+              className="field-input"
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            >
+              <option value="">All</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Priority</div>
+            <select
+              className="field-input"
+              value={filters.priority}
+              onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+            >
+              <option value="">All</option>
+              {PRIORITY_OPTIONS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="table-wrap">
