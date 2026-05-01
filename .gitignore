@@ -12,6 +12,9 @@ dist/
 client/dist/
 server/data/
 server/storage/
+# Runtime uploads (spec PDFs, etc.) — do not commit; keep directory via .gitkeep
+server/uploads/*
+!server/uploads/.gitkeep
 build/
 __pycache__/
 *.pyc
