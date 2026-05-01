@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import { projectPath } from '../lib/paths.js';
 import { api } from '../api.js';
 
 export default function Signatures() {
+  const { projectId } = useParams();
   const [rows, setRows] = useState([]);
   const [scan, setScan] = useState(null);
 
@@ -96,7 +98,11 @@ export default function Signatures() {
                 </td>
                 <td>{r.total}</td>
                 <td>
-                  <Link to={`/signatures/${r.signature_key}`}>Diagnostics</Link>
+                  <Link
+                    to={projectPath(Number(projectId), `signatures/${encodeURIComponent(r.signature_key)}`)}
+                  >
+                    Diagnostics
+                  </Link>
                 </td>
               </tr>
             ))}

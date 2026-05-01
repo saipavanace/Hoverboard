@@ -1,14 +1,31 @@
 # Hoverboard
 
-Hoverboard is a **private**, **project-independent** web application for managing design requirements (DRs), verification requirements (VRs), specification versioning, regression intelligence, and ISO 26262-oriented compliance workflows. The UI targets the same class of workflows as tools like Simscope—status dashboards, signature-style regression binning, diagnostics drill-downs, and release readiness—while remaining configurable for any team or codebase.
+Hoverboard is a web application for **hardware/software verification–oriented teams** who need traceability from specifications through **design requirements (DRs)** and **verification requirements (VRs)** to regressions, metrics, evidence, and audit-ready records. It supports **multi-project workspaces**, **role-based access**, optional **SSO (OIDC)**, an **artifact graph** for traceability, **threaded comments**, **approvals with independence rules**, and **ISO 26262–style** reporting hooks.
 
-**Stack:** React (Vite), JavaScript, Express API, SQLite, Vitest — responsive UI shell.
+**Stack:** React (Vite), Express API, SQLite (better-sqlite3), Vitest.
 
 ---
 
-## Development
+## Features
 
-From the repository root (requires Node.js 20+ and npm):
+| Area | Capabilities |
+| --- | --- |
+| **Specifications** | Upload PDF/Word; versioned ingests; change summaries between versions; read-only in-app viewing |
+| **DRs / VRs** | Stable public IDs (e.g. `DR-00001`, `VR-00001`); categories, ASIL, linking many-to-many |
+| **Traceability** | Artifact graph (DR/VR as artifacts), links between artifacts, **suspect** links when upstream changes |
+| **Quality & CI** | Regression directory ingest, signature-style binning, coverage ingestion, VR hit detection from logs |
+| **Release** | Combined readiness score and adaptive projection from configurable weights |
+| **Collaboration** | Comments on artifacts with author identity; resolve workflow |
+| **Governance** | Audit trail, baselines, sign-off rules (role + independence I0–I3), approval hashes |
+| **Administration** | Users, global/project roles, teams/hierarchy, project access — **system administrators** manage directory-level functions |
+
+---
+
+## Quick start
+
+**Prerequisites:** Node.js **20+**, npm.
+
+From the repository root:
 
 ```bash
 npm install
@@ -17,136 +34,74 @@ npm install --prefix client
 npm run dev
 ```
 
-- **Web UI:** [http://localhost:5173](http://localhost:5173) (proxies `/api` and `/uploads` to the API).
-- **API:** [http://localhost:5179](http://localhost:5179).
+| Service | URL |
+| --- | --- |
+| **Web UI** | [http://localhost:5173](http://localhost:5173) — proxies `/api` and `/uploads` to the API |
+| **API** | [http://localhost:5179](http://localhost:5179) — set `PORT` to change |
+
+1. Open the web app; sign in (see [Authentication](docs/authentication.md)).
+2. On first visit after login, use **Open projects** to pick a workspace or **Create project** to start fresh (optionally **start from** an existing project to copy structure).
+3. Inside a project: **Specs**, **Design requirements**, **Verification**, **Dashboard**, etc.
+
+**Built-in administrator (local/password):** username **`admin`**, password **`12345`** — seeded when the server starts; intended for initial setup and small deployments. Change operational policy via SSO and disable local login in production if required.
+
+**Tests and production build:**
 
 ```bash
-npm test          # client + server unit tests
-npm run build     # production client bundle → client/dist
-npm start         # serve API only (set `NODE_ENV=production`)
+npm test              # client + server tests
+npm run build           # client bundle → client/dist
+npm start               # API only (production); serve static files per your deployment
 ```
 
-Configuration keys are documented in [`docs/configuration.md`](docs/configuration.md). Edit `hoverboard.config.json` or use **Settings** in the app.
+---
+
+## UI overview
+
+- **Project hub** (`/projects`): Lists projects you can access; **Create project** adds a new workspace. The header offers **Open projects** and **Create project** while you work inside a project so you can return here anytime.
+- **Project workspace**: Sidebar navigation — Dashboard, Specs, DRs, VRs, Signatures, Regressions, ISO 26262, Audit, Settings. **Admin** (system administrators) appears in the header for administration pages scoped to the current project route.
+- **Specs**: Upload and version documents; create DRs from selections.
+- **DRs / VRs**: Tables and detail flows; traceability and stale marking when specifications change.
+- **Dashboard**: Metrics and release readiness snapshot.
+
+Screenshots can be added under `docs/images/` in your deployment; the UI uses a responsive shell with light/dark theme toggle.
 
 ---
 
-## Repository visibility
+## Documentation
 
-This repository is intended to remain **private**. Access is granted only to collaborators you invite or via shared links you control (e.g., deployment behind authentication). Configure visibility in your Git host (GitHub/GitLab/etc.) under repository settings — **not enforced in code** (see roadmap **11** below).
+Full documentation for adopters and administrators:
 
----
-
-## Vision
-
-- Extremely **fast** and **beautiful** UI with excellent **UX** and **responsive** navigation on desktop and tablet.
-- **Read-only** spec viewing in-app after upload (no editing inside Hoverboard).
-- **Traceability** from spec text → DR → VR → regressions, metrics, and release projection.
-- **Adaptive release readiness**: early projections are intentionally conservative (“infinite” horizon) and **tighten automatically** as real velocity and quality signals accumulate.
-
----
-
-## Feature roadmap
-
-Legend: `[ ]` not started · `[x]` implemented
-
-### Core spec & documents
-
-- [x] **1.** Upload documents (Word, PDF); view them inside the app with **no in-app editing** after ingest.
-- [x] **2.** Select text or a line in the document and choose **Create DR**; store the excerpt with a **unique DR ID** in the database.
-- [x] **6.** Organize specs by **version**, **name**, and stable **identifier**; on **new version upload**, compute a **automatic change list** (diff summary).
-
-### DR / VR model & linking
-
-- [x] **3.** Author **VRs** (verification requirements) describing how each DR is verified.
-- [x] **4.** Link **VR ↔ DR** via unique DR IDs (many-to-many: multiple DRs per VR, multiple VRs per DR).
-- [x] **5.** Each **VR** has its own **unique ID** plus structured metadata (see below).
-
-**Suggested VR fields (initial):**
-
-| Field | Purpose |
+| Document | Description |
 | --- | --- |
-| Unique VR ID | Stable primary key |
-| Title / summary | Short description |
-| Status | e.g. draft, ready, in verification, blocked, done |
-| Linked DR IDs | Many-to-many relation |
-| Priority / severity | Triage |
-| Owner / assignee | Responsibility |
-| Location / scope | Block, subsystem, bench, env tag |
-| Verification method | Simulation, formal, FPGA, lab, review |
-| Target milestone / gate | Aligns with ISO or internal gates |
-| Evidence links | Logs, reports, waiver refs |
-| Last updated / last verified | Freshness |
+| [Documentation index](docs/README.md) | Central map of all guides |
+| [Installation](docs/installation.md) | Prerequisites, env vars, database, running services |
+| [Authentication](docs/authentication.md) | SSO (Azure AD, Google, Okta, generic OIDC), local login |
+| [Admin guide](docs/admin_guide.md) | Users, roles, teams, sign-off rules |
+| [Project guide](docs/project_guide.md) | Projects, switching, import, settings |
+| [Artifacts & traceability](docs/artifacts_and_traceability.md) | DR/VR model, versioning, links, evidence |
+| [Reviews & approvals](docs/reviews_and_approvals.md) | Approvals, independence, signatures |
+| [Comments](docs/comments.md) | Collaboration on artifacts |
+| [Audit & baselines](docs/audit_and_baselines.md) | Compliance-oriented features |
+| [Configuration](docs/configuration.md) | Full config schema |
+| [Troubleshooting](docs/troubleshooting.md) | Common errors and fixes |
+| [Architecture](docs/architecture.md) | System design and data model |
 
-### Stale workflow (spec changes)
-
-- [x] **7.** When the change list affects text tied to existing DRs, mark those DRs and **all linked VRs** as **stale** with **consistent color coding** (and clear UX copy explaining why).
-
-### Quality, UX & engineering
-
-- [x] **8.** Maintain an **automated test suite** for the webapp (unit/integration/e2e as appropriate) that stays green as the product evolves.
-- [x] **9.** **Responsive** layout and **easy navigation** (information architecture, keyboard-friendly patterns where sensible).
-
-### Repository access (hosting policy)
-
-- [x] **11.** **Private repo / invite-only:** enforced via Git host settings and deployment auth — document policy here; no substitute for platform RBAC.
-
-### ISO 26262 mode & reporting
-
-- [x] **10.** **ISO 26262 tracking mode** with a **rich, commercially credible** feature set (examples below—not exhaustive):
-
-  - Safety plan / safety case artifact templates and export (structured sections).
-  - Traceability reports: requirement ↔ verification ↔ evidence ↔ anomaly / change history.
-  - ASIL tagging at DR/VR level with filtering and gap analysis.
-  - Verification review records: checklist states, approvers, timestamps.
-  - Tool qualification / process evidence placeholders (configurable per org).
-  - Audit trail: who changed what, when (immutable event log for compliance reviews).
-  - Export bundles (PDF/HTML/CSV) suitable for external audits.
-
-### Metrics, regressions & “Simscope-class” analytics
-
-Inspired by the reference screens (status dashboard, signature trends, error diagnostics, automation narrative)—implement **at least** the following, with room to exceed them:
-
-- [x] **12.** Dashboard metrics: **functional coverage**, **VR coverage**, **DR coverage**, and related KPIs.
-- [x] **13.** Ingest and interpret **regression paths** / result roots from configurable inputs (CI artifacts, directory layouts, or APIs).
-- [x] **14.** **Automatic regression binning** (signature-like grouping of failures with IDs, trends, states, and drill-down).
-- [x] **15.** Parity-plus with reference tool UX patterns: executive **status dashboard**, **signature trends** table with sparklines and triage states, **error diagnostics** drill-down (histogram, activity log, linking to rules/issues), **insights** (temporal, cross-block, ownership, shortest fails, links to bugs/check-ins/config/regressions/branches/builds). Aim for **clearer hierarchy, faster load, and saner defaults** than the references.
-
-### Release readiness & projection
-
-- [x] **17.** A **single management-facing progress indicator** combining regression pass rate, functional coverage, code coverage, VR coverage, DR closure, and other configurable weights into **one release-distance score** with explanation (what moves the needle).
-- [x] **18.** **Adaptive projected release date**: early in the program the horizon stays **very uncertain** (effectively unbounded / “TBD”); as progress and cadence stabilize, the model **rapidly adapts** using historical throughput and quality gates—always surfacing **confidence** alongside the date.
-
-### Configuration & multi-tenant portability
-
-- [x] **16.** **Project-independent** operation: fast onboarding via config (YAML/JSON/env) for project name, ID schemes, regression roots, coverage formats, issue tracker hooks, gates, weights for the release metric, and branding. **Document every configuration key** in-repo (e.g. [`docs/configuration.md`](docs/configuration.md)).
+Legacy reference: [Platform security](docs/platform-security.md) (overlap with authentication and RBAC; prefer the guides above for onboarding).
 
 ---
 
-## Technical notes (non-functional)
+## Security note
 
-- **Privacy:** Keep the repo private; use authenticated deployment for any shared preview URLs.
-- **Documents:** Word/PDF rendering is typically done via conversion or viewer libraries—implementation choices will respect read-only and audit requirements.
-- **Performance:** Lazy routes, code splitting, memoization, and efficient table/virtualization for large signature lists.
-
----
-
-## Development status
-
-| Area | Status |
-| --- | --- |
-| React app (Vite) | Initial UI & routes |
-| Backend / API (Express) | SQLite persistence, uploads, metrics |
-| Database schema (DR/VR/spec versions) | Implemented |
-| Authentication / access control | Not implemented (add before internet exposure) |
+Do not expose the API to the public internet without **TLS**, **authentication enabled**, and **review of default credentials**. Use SSO in production where possible.
 
 ---
 
 ## License
 
-Specify your license when ready (private/internal products often use a proprietary or custom license).
+Specify your organization’s license (proprietary, internal use, etc.).
 
 ---
 
 ## Contributing
 
-Internal contributors only; follow branch protection and review rules defined for this repository.
+Internal contributors: follow your team’s branch protection and code review rules.

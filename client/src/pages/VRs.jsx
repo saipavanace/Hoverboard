@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { projectPath } from '../lib/paths.js';
 import { api } from '../api.js';
+import ArtifactThreads from '../components/ArtifactThreads.jsx';
 
 const STATUS_OPTIONS = ['draft', 'ready', 'in verification', 'blocked', 'done', 'closed'];
 const PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'];
 
 export default function VRs() {
+  const { projectId } = useParams();
   const [vrs, setVrs] = useState([]);
+  const [deleteErr, setDeleteErr] = useState('');
   const [allDrs, setAllDrs] = useState([]);
   const [categories, setCategories] = useState([]);
   const [filters, setFilters] = useState({
@@ -30,6 +35,7 @@ export default function VRs() {
   const [drSearch, setDrSearch] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [drPickerFeedback, setDrPickerFeedback] = useState('');
+  const [selectedVrPublicId, setSelectedVrPublicId] = useState(null);
 
   useEffect(() => {
     api.vrs(filters).then(setVrs).catch(() => setVrs([]));
@@ -116,7 +122,9 @@ export default function VRs() {
       <p className="page-lede">
         VRs use categories and labels for navigation. Each VR must link to at least one{' '}
         <strong>existing</strong> DR — pick from the typeahead (unknown IDs cannot be saved). Optional
-        ASIL is available under ISO reporting when needed.
+        ASIL is available under ISO reporting when needed. <strong>Coverage</strong> is computed only from
+        regression log scans (<code>VR-…</code> / <code>VR_…</code> matches); there is no manual “covered”
+        toggle — run <strong>Regressions → VR log scan</strong> with a directory the API can read.
       </p>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
@@ -423,36 +431,125 @@ export default function VRs() {
         </div>
       </div>
 
+      {deleteErr && (
+        <p style={{ color: '#f87171', marginBottom: '0.75rem' }} role="alert">
+          {deleteErr}
+        </p>
+      )}
+
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
               <th>VR ID</th>
               <th>Title</th>
+              <th>Covered (logs)</th>
+              <th>Tests (logs)</th>
               <th>Category</th>
               <th>Labels</th>
               <th>Status</th>
               <th>Prio</th>
               <th>Linked DRs</th>
               <th>Stale</th>
+              <th>Artifact</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {vrs.map((v) => (
-              <tr key={v.id}>
+              <tr
+                key={v.id}
+                style={{
+                  cursor: 'pointer',
+                  background:
+                    selectedVrPublicId === v.public_id ? 'rgba(20,184,166,0.08)' : undefined,
+                }}
+                onClick={() =>
+                  setSelectedVrPublicId((cur) => (cur === v.public_id ? null : v.public_id))
+                }
+              >
                 <td style={{ fontFamily: 'var(--mono)', fontSize: '0.82rem' }}>{v.public_id}</td>
                 <td>{v.title}</td>
+                <td>
+                  {v.covered ? (
+                    <span className="badge badge-ok" title={`${v.coverage_hits || 0} mention(s) in logs`}>
+                      Yes
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--muted)' }}>No</span>
+                  )}
+                </td>
+                <td
+                  style={{ fontSize: '0.78rem', maxWidth: 220 }}
+                  title={(v.tests_from_logs || []).join(', ') || (v.regression_logs || []).map((x) => x.path).join('\n')}
+                >
+                  {(v.tests_from_logs || []).length > 0
+                    ? `${(v.tests_from_logs || []).length}: ${(v.tests_from_logs || []).slice(0, 3).join(', ')}${
+                        (v.tests_from_logs || []).length > 3 ? '…' : ''
+                      }`
+                    : v.regression_log_count > 0
+                      ? `${v.regression_log_count} log file(s)`
+                      : '—'}
+                </td>
                 <td>{v.category || '—'}</td>
                 <td>{(v.labels || []).join(', ') || '—'}</td>
                 <td>{v.status}</td>
                 <td>{v.priority || '—'}</td>
                 <td>{(v.linked_dr_public_ids || []).join(', ') || '—'}</td>
                 <td>
-                  {v.stale_from_dr ? (
+                  {v.orphan_stale ? (
+                    <span className="badge badge-stale" title={v.stale_reason || ''}>
+                      Orphan
+                    </span>
+                  ) : v.stale_from_dr ? (
                     <span className="badge badge-stale">Stale chain</span>
                   ) : (
                     <span className="badge badge-ok">Clean</span>
                   )}
+                </td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  {v.artifact_id ? (
+                    <Link
+                      to={projectPath(Number(projectId), `artifacts/${v.artifact_id}`)}
+                      style={{ fontSize: '0.82rem' }}
+                    >
+                      Open
+                    </Link>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '0.2rem 0.45rem',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'transparent',
+                      color: '#f87171',
+                      cursor: 'pointer',
+                    }}
+                    onClick={async () => {
+                      setDeleteErr('');
+                      if (
+                        !window.confirm(
+                          `Permanently delete VR ${v.public_id}? This cannot be undone.`
+                        )
+                      )
+                        return;
+                      try {
+                        await api.deleteVr(v.public_id);
+                        setVrs(await api.vrs(filters));
+                        if (selectedVrPublicId === v.public_id) setSelectedVrPublicId(null);
+                      } catch (err) {
+                        setDeleteErr(err.message || 'Delete failed');
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}
@@ -463,6 +560,7 @@ export default function VRs() {
       {!vrs.length && (
         <p style={{ color: 'var(--muted)' }}>No VRs match the current filters.</p>
       )}
+      <ArtifactThreads publicId={selectedVrPublicId} kind="VR" />
     </>
   );
 }

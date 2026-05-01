@@ -6,7 +6,11 @@ import { setupFetchMock } from '../test/mocks.js';
 
 describe('Specs page', () => {
   beforeEach(() => {
-    localStorage.clear();
+    try {
+      if (typeof localStorage?.clear === 'function') localStorage.clear();
+    } catch {
+      /* optional in test env */
+    }
     setupFetchMock({
       'GET /api/config': {
         requirementCategories: ['System'],

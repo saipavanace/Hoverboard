@@ -2,11 +2,37 @@ import fs from 'fs';
 import path from 'path';
 
 const DEFAULT_VR_REGEX =
-  /(?:UVM_INFO|uvm_info|UVM_NOTE)[\s\S]{0,200}?\b(VR-\d{3,8})\b/i;
+  /(?:UVM_INFO|uvm_info|UVM_NOTE)[\s\S]{0,200}?\b(VR[-_]\d{1,8})\b/i;
 
-const FALLBACK_VR_REGEX = /\b(VR-\d{3,8})\b/i;
+const FALLBACK_VR_REGEX = /\b(VR[-_]\d{1,8})\b/i;
 
 const DEFAULT_FILES = [/\.log$/i, /\.txt$/i, /\.out$/i];
+
+/** Normalize log tokens (VR_003, VR-3) to canonical DB form VR-00003 */
+export function canonicalVrPublicId(raw) {
+  const s = String(raw).trim().toUpperCase().replace(/_/g, '-');
+  const m = s.match(/^VR-(\d+)$/);
+  if (!m) return s;
+  const n = parseInt(m[1], 10);
+  if (Number.isNaN(n)) return s;
+  return `VR-${String(n).padStart(5, '0')}`;
+}
+
+/**
+ * For paths like .../ncore_sys_test_0_0/vcs.log, directory basename is the test run folder.
+ * Strips every `0` character from that name per naming convention, then collapses underscores.
+ */
+export function extractTestNameFromLogPath(filePath) {
+  const norm = filePath.replace(/\\/g, '/');
+  if (!/\/vcs\.log$/i.test(norm)) {
+    return { testRaw: null, testNormalized: null };
+  }
+  const dir = path.dirname(norm);
+  const segment = path.basename(dir);
+  const strippedZeros = segment.replace(/0/g, '');
+  const testNormalized = strippedZeros.replace(/_+/g, '_').replace(/^_|_$/g, '') || null;
+  return { testRaw: segment, testNormalized };
+}
 
 export function compileVrRegex(input) {
   if (!input) return null;
@@ -19,9 +45,9 @@ export function compileVrRegex(input) {
 }
 
 /**
- * Scan a single text and return Set of VR public_ids found.
+ * Scan a single text and return Map of canonical VR public_id -> hit count.
  * - When `strictUvmInfo` is true, only UVM_INFO-like lines count.
- * - Otherwise also accepts a bare VR-XXXXX reference as a fallback.
+ * - Otherwise also accepts a bare VR reference as a fallback.
  */
 export function scanContents(text, opts = {}) {
   const strict = opts.strictUvmInfo !== false;
@@ -36,17 +62,17 @@ export function scanContents(text, opts = {}) {
       m = FALLBACK_VR_REGEX.exec(line);
     }
     if (m && m[1]) {
-      const id = m[1].toUpperCase();
+      const id = canonicalVrPublicId(m[1]);
       found.set(id, (found.get(id) || 0) + 1);
     }
   }
-  return found; // Map<VR-id, hits>
+  return found;
 }
 
 export function scanDirectory(rootDir, opts = {}) {
   const filePatterns = opts.filePatterns?.length ? opts.filePatterns : DEFAULT_FILES;
   const merged = new Map();
-  const files = [];
+  const perFileHits = [];
   walk(rootDir, 0, opts.maxDepth ?? 8, filePatterns, (filePath) => {
     let text = '';
     try {
@@ -56,13 +82,13 @@ export function scanDirectory(rootDir, opts = {}) {
     } catch {
       return;
     }
-    files.push(filePath);
     const found = scanContents(text, opts);
+    perFileHits.push({ path: filePath, hits: found });
     for (const [id, n] of found.entries()) {
       merged.set(id, (merged.get(id) || 0) + n);
     }
   });
-  return { rootDir, files: files.length, hits: merged };
+  return { rootDir, files: perFileHits.length, hits: merged, perFileHits };
 }
 
 function walk(dir, depth, maxDepth, filePatterns, onFile) {

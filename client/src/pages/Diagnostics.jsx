@@ -10,9 +10,10 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { api } from '../api.js';
+import { projectPath } from '../lib/paths.js';
 
 export default function Diagnostics() {
-  const { key } = useParams();
+  const { projectId, key } = useParams();
   const [sig, setSig] = useState(null);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export default function Diagnostics() {
 
   return (
     <>
-      <Link to="/signatures" style={{ fontSize: '0.88rem' }}>
+      <Link to={projectPath(Number(projectId), 'signatures')} style={{ fontSize: '0.88rem' }}>
         ← Signatures
       </Link>
       <h1 className="page-title" style={{ marginTop: '0.65rem' }}>

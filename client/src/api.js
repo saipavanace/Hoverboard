@@ -1,11 +1,33 @@
+let activeProjectId = null;
+
+/** Called by ProjectProvider; keeps API calls scoped to the selected project. */
+export function setActiveProjectId(id) {
+  activeProjectId = id != null && !Number.isNaN(Number(id)) ? Number(id) : null;
+}
+
+export function getActiveProjectId() {
+  return activeProjectId;
+}
+
+function projectHeaders(extra = {}) {
+  const h = { ...extra };
+  if (activeProjectId != null) h['X-Project-Id'] = String(activeProjectId);
+  return h;
+}
+
 const json = async (path, opts = {}) => {
+  const baseHeaders =
+    opts.body instanceof FormData ? projectHeaders({ ...opts.headers }) : projectHeaders({ 'Content-Type': 'application/json', ...opts.headers });
   const r = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    credentials: 'include',
+    headers: baseHeaders,
     ...opts,
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
-    throw new Error(err.error || r.statusText);
+    const e = new Error(err.error || r.statusText);
+    e.status = r.status;
+    throw e;
   }
   return r.json();
 };
@@ -31,7 +53,12 @@ export const api = {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('version', version);
-    const r = await fetch(`/api/specs/${specId}/versions`, { method: 'POST', body: fd });
+    const r = await fetch(`/api/specs/${specId}/versions`, {
+      method: 'POST',
+      body: fd,
+      credentials: 'include',
+      headers: projectHeaders(),
+    });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
     return r.json();
   },
@@ -39,10 +66,14 @@ export const api = {
   specVersionHtml: (vid) => json(`/api/spec-versions/${vid}/html`),
   drs: (params) => json(`/api/drs${qsp(params)}`),
   createDr: (body) => json('/api/drs', { method: 'POST', body: JSON.stringify(body) }),
+  deleteDr: (publicId, params) =>
+    json(`/api/drs/${encodeURIComponent(publicId)}${qsp(params || {})}`, { method: 'DELETE' }),
   vrs: (params) => json(`/api/vrs${qsp(params)}`),
   createVr: (body) => json('/api/vrs', { method: 'POST', body: JSON.stringify(body) }),
   patchVr: (publicId, body) =>
     json(`/api/vrs/${publicId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteVr: (publicId) =>
+    json(`/api/vrs/${encodeURIComponent(publicId)}`, { method: 'DELETE' }),
   metrics: () => json('/api/metrics'),
   releaseReadiness: () => json('/api/release-readiness'),
   signatures: () => json('/api/regressions/signatures'),
@@ -71,4 +102,86 @@ export const api = {
   drCoverage: () => json('/api/dr-coverage'),
   isoAudit: () => json('/api/iso/audit-log'),
   demoSeed: () => json('/api/demo/seed', { method: 'POST' }),
+
+  authMe: () => json('/api/auth/me'),
+  authLogin: (body) => json('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  authLdapLogin: (body) =>
+    json('/api/auth/ldap/login', { method: 'POST', body: JSON.stringify(body) }),
+  authLogout: () => json('/api/auth/logout', { method: 'POST' }),
+  authBootstrap: (body) =>
+    json('/api/auth/bootstrap-first-admin', { method: 'POST', body: JSON.stringify(body) }),
+
+  projects: () => json('/api/projects'),
+  project: (projectId) => json(`/api/projects/${projectId}`),
+  createProject: (body) =>
+    json('/api/projects', { method: 'POST', body: JSON.stringify(body) }),
+
+  artifactDetail: (artifactId) => json(`/api/graph/artifacts/${artifactId}`),
+
+  artifactLookup: (publicId, type) =>
+    json(`/api/graph/artifacts/lookup${qsp({ public_id: publicId, type })}`),
+  artifactComments: (artifactId) => json(`/api/graph/artifacts/${artifactId}/comments`),
+  postComment: (artifactId, body, parentId) =>
+    json(`/api/graph/artifacts/${artifactId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body, parent_comment_id: parentId }),
+    }),
+  resolveComment: (commentId, resolved) =>
+    json(`/api/graph/comments/${commentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ resolved }),
+    }),
+  approvals: (artifactId) => json(`/api/graph/artifacts/${artifactId}/approvals`),
+  postApproval: (artifactId, decision) =>
+    json(`/api/graph/artifacts/${artifactId}/approvals`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    }),
+
+  adminUsers: () => json('/api/admin/users'),
+  adminCreateUser: (body) =>
+    json('/api/admin/users', { method: 'POST', body: JSON.stringify(body) }),
+  adminAuthOverview: () => json('/api/admin/auth-overview'),
+  adminSyncedGroups: () => json('/api/admin/synced-groups'),
+  adminPatchUser: (id, body) =>
+    json(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminRoles: (id, body) =>
+    json(`/api/admin/users/${id}/roles`, { method: 'POST', body: JSON.stringify(body) }),
+  adminAudit: (limit) => json(`/api/admin/audit-events${qsp({ limit })}`),
+  adminBaselines: () => json('/api/admin/baselines'),
+  adminCreateBaseline: (body) =>
+    json('/api/admin/baselines', { method: 'POST', body: JSON.stringify(body) }),
+  adminBaselineExport: (id) => json(`/api/admin/baselines/${id}/export`),
+  adminSignoffRules: () => json('/api/admin/signoff-rules'),
+  adminCreateSignoffRule: (body) =>
+    json('/api/admin/signoff-rules', { method: 'POST', body: JSON.stringify(body) }),
+
+  teams: (projectId) => json(`/api/projects/${projectId}/teams`),
+  createTeam: (projectId, body) =>
+    json(`/api/projects/${projectId}/teams`, { method: 'POST', body: JSON.stringify(body) }),
+  patchTeam: (projectId, teamId, body) =>
+    json(`/api/projects/${projectId}/teams/${teamId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  evidenceList: (projectId, params) =>
+    json(`/api/projects/${projectId}/evidence${qsp(params || {})}`),
+  evidenceUpload: async (projectId, formData) => {
+    const r = await fetch(`/api/projects/${projectId}/evidence/upload`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+      headers: projectHeaders(),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+    return r.json();
+  },
+  evidencePatch: (projectId, evidenceId, body) =>
+    json(`/api/projects/${projectId}/evidence/${evidenceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  evidenceDownloadUrl: (projectId, evidenceId) =>
+    `/api/projects/${projectId}/evidence/${evidenceId}/download`,
 };

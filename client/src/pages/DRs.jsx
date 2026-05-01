@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { projectPath } from '../lib/paths.js';
 import { api } from '../api.js';
+import ArtifactThreads from '../components/ArtifactThreads.jsx';
 
 const STATUS_OPTIONS = ['open', 'review', 'closed'];
 const PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'];
 
 export default function DRs() {
+  const { projectId } = useParams();
   const [rows, setRows] = useState([]);
+  const [deleteErr, setDeleteErr] = useState('');
   const [categories, setCategories] = useState([]);
   const [filters, setFilters] = useState({
     q: '',
@@ -13,6 +18,7 @@ export default function DRs() {
     status: '',
     priority: '',
   });
+  const [selectedPublicId, setSelectedPublicId] = useState(null);
 
   useEffect(() => {
     api.config().then((c) => setCategories(c.requirementCategories || []));
@@ -100,6 +106,12 @@ export default function DRs() {
         </div>
       </div>
 
+      {deleteErr && (
+        <p style={{ color: '#f87171', marginBottom: '0.75rem' }} role="alert">
+          {deleteErr}
+        </p>
+      )}
+
       <div className="table-wrap">
         <table>
           <thead>
@@ -113,11 +125,23 @@ export default function DRs() {
               <th>Status</th>
               <th>Prio</th>
               <th>Stale</th>
+              <th>Artifact</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id}>
+              <tr
+                key={r.id}
+                style={{
+                  cursor: 'pointer',
+                  background:
+                    selectedPublicId === r.public_id ? 'rgba(20,184,166,0.08)' : undefined,
+                }}
+                onClick={() =>
+                  setSelectedPublicId((cur) => (cur === r.public_id ? null : r.public_id))
+                }
+              >
                 <td style={{ fontFamily: 'var(--mono)', fontSize: '0.82rem' }}>{r.public_id}</td>
                 <td>{r.category || '—'}</td>
                 <td>{(r.labels || []).join(', ') || '—'}</td>
@@ -133,6 +157,50 @@ export default function DRs() {
                     <span className="badge badge-ok">Current</span>
                   )}
                 </td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  {r.artifact_id ? (
+                    <Link
+                      to={projectPath(Number(projectId), `artifacts/${r.artifact_id}`)}
+                      style={{ fontSize: '0.82rem' }}
+                    >
+                      Open
+                    </Link>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '0.2rem 0.45rem',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'transparent',
+                      color: '#f87171',
+                      cursor: 'pointer',
+                    }}
+                    onClick={async () => {
+                      setDeleteErr('');
+                      if (!window.confirm(`Delete DR ${r.public_id}?`)) return;
+                      const removeOrphans = window.confirm(
+                        `VRs that were only linked to this DR:\n\nOK = permanently delete those VRs\nCancel = keep them as stale/orphan records (recommended)`
+                      );
+                      try {
+                        await api.deleteDr(r.public_id, {
+                          orphan_vrs: removeOrphans ? 'delete' : 'stale',
+                        });
+                        setRows(await api.drs(filters));
+                        if (selectedPublicId === r.public_id) setSelectedPublicId(null);
+                      } catch (err) {
+                        setDeleteErr(err.message || 'Delete failed');
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -141,6 +209,7 @@ export default function DRs() {
       {!rows.length && (
         <p style={{ color: 'var(--muted)' }}>No DRs match the current filters.</p>
       )}
+      <ArtifactThreads publicId={selectedPublicId} kind="DR" />
     </>
   );
 }

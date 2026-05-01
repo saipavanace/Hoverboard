@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['services/**/*.test.js'],
+    include: ['**/*.test.js'],
+    env: {
+      HOVERBOARD_AUTH_DISABLED: 'true',
+    },
   },
 });

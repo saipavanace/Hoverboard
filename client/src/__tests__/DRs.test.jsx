@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import DRs from '../pages/DRs.jsx';
 import { setupFetchMock } from '../test/mocks.js';
 
@@ -21,8 +21,10 @@ describe('DRs page', () => {
 
   it('renders filter controls and refetches when category changes', async () => {
     render(
-      <MemoryRouter>
-        <DRs />
+      <MemoryRouter initialEntries={['/projects/1/drs']}>
+        <Routes>
+          <Route path="/projects/:projectId/drs" element={<DRs />} />
+        </Routes>
       </MemoryRouter>
     );
 

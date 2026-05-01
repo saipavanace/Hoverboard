@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import VRs from '../pages/VRs.jsx';
 import { setupFetchMock } from '../test/mocks.js';
 
@@ -24,8 +24,10 @@ describe('VRs page', () => {
 
   it('disables Save VR until title, category, and a linked DR are present', async () => {
     render(
-      <MemoryRouter>
-        <VRs />
+      <MemoryRouter initialEntries={['/projects/1/vrs']}>
+        <Routes>
+          <Route path="/projects/:projectId/vrs" element={<VRs />} />
+        </Routes>
       </MemoryRouter>
     );
 
@@ -38,8 +40,10 @@ describe('VRs page', () => {
 
   it('shows "Not found" when typing an unknown DR ID and pressing Enter', async () => {
     render(
-      <MemoryRouter>
-        <VRs />
+      <MemoryRouter initialEntries={['/projects/1/vrs']}>
+        <Routes>
+          <Route path="/projects/:projectId/vrs" element={<VRs />} />
+        </Routes>
       </MemoryRouter>
     );
 
