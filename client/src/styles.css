@@ -375,3 +375,143 @@ tr:hover td {
   border: none;
   color: inherit;
 }
+
+/* Dashboard — verification requirement coverage panel */
+.dashboard-req-section {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem 1.35rem;
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--surface) 96%, var(--accent) 4%) 0%,
+    var(--surface) 48%,
+    var(--surface) 100%
+  );
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.dashboard-req-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+  margin-bottom: 1.15rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-req-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.dashboard-req-desc {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--muted);
+  max-width: 42rem;
+  line-height: 1.45;
+}
+
+.dashboard-req-overall {
+  text-align: right;
+  min-width: 5.5rem;
+}
+
+.dashboard-req-overall .kpi-label {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.dashboard-req-overall-val {
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.dashboard-req-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 0.9rem;
+}
+
+.req-cov-tile {
+  --tile-accent: var(--accent);
+  position: relative;
+  border-radius: calc(var(--radius) - 2px);
+  padding: 1rem 1rem 0.85rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, var(--tile-accent) 8%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  overflow: hidden;
+}
+
+.req-cov-tile::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--tile-accent);
+  border-radius: 2px 0 0 2px;
+}
+
+.req-cov-tile__kind {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 0.15rem;
+}
+
+.req-cov-tile__name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.req-cov-tile__pct {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+}
+
+.req-cov-tile__meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.55rem;
+}
+
+.req-cov-tile__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+  overflow: hidden;
+}
+
+.req-cov-tile__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--tile-accent), color-mix(in srgb, var(--tile-accent) 65%, white));
+  transition: width 0.35s ease;
+}
+
+[data-theme='light'] .req-cov-tile {
+  background: color-mix(in srgb, var(--surface) 97%, var(--tile-accent) 5%);
+}
+
+[data-theme='light'] .req-cov-tile__bar > span {
+  background: linear-gradient(90deg, var(--tile-accent), color-mix(in srgb, var(--tile-accent) 75%, #fff));
+}

@@ -1117,6 +1117,32 @@ app.get(
   const codeCoverage = cdRow ? Math.round(Number(cdRow.value)) : 0;
   const vrCoverage = vrTotal ? Math.round((vrCovered / vrTotal) * 100) : 0;
 
+  const requirementKindCoverage = (kind) => {
+    const total = db
+      .prepare(`SELECT COUNT(*) AS n FROM vrs WHERE project_id = ? AND vr_kind = ?`)
+      .get(pid, kind).n;
+    const covered = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS n FROM vrs v
+      JOIN vr_coverage c ON c.vr_id = v.id AND c.hits > 0
+      WHERE v.project_id = ? AND v.vr_kind = ?
+    `
+      )
+      .get(pid, kind).n;
+    return {
+      total,
+      covered,
+      pct: total ? Math.round((covered / total) * 100) : 0,
+    };
+  };
+  const requirementCoverageByKind = {
+    VR: requirementKindCoverage('VR'),
+    SR: requirementKindCoverage('SR'),
+    CR: requirementKindCoverage('CR'),
+    AR: requirementKindCoverage('AR'),
+  };
+
   const drCovered = (() => {
     const rows = db
       .prepare(
@@ -1155,6 +1181,7 @@ app.get(
     functionalCoverage,
     codeCoverage,
     vrCoverage,
+    requirementCoverageByKind,
     drCoverage: drClosure,
     drTotal,
     drStale,
