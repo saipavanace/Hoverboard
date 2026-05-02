@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { db, nextPublicId } from '../db.js';
+import { kindToIdParts } from './vrKind.js';
 
 /**
  * Deep-copy specs (with uploaded files), DRs, VRs, links, and VR coverage from source → target project.
@@ -155,22 +156,25 @@ export function cloneProjectContent(sourceProjectId, targetProjectId, uploadsDir
     const vrRows = db.prepare(`SELECT * FROM vrs WHERE project_id = ? ORDER BY id`).all(srcPid);
 
     for (const vr of vrRows) {
-      const publicId = nextPublicId('VR', 'vr');
+      const vrKind = vr.vr_kind || 'VR';
+      const { prefix, counterKey } = kindToIdParts(vrKind);
+      const publicId = nextPublicId(prefix, counterKey);
       let evidence_links = vr.evidence_links;
       const ins = db
         .prepare(
           `
         INSERT INTO vrs (
-          public_id, title, description, status, priority, owner, location_scope,
+          public_id, vr_kind, title, description, status, priority, owner, location_scope,
           verification_method, milestone_gate, evidence_links, last_verified, asil,
           category, labels, artifact_id, project_id, stale, stale_reason
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
         RETURNING id
       `
         )
         .get(
           publicId,
+          vrKind,
           vr.title,
           vr.description,
           vr.status,

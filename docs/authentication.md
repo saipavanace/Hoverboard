@@ -186,6 +186,8 @@ Groups are typically taken from **`memberOf`** (full DNs). Use **`roleMappings`*
 
 When **`auth.localLoginEnabled`** is `true`, users can sign in with **`POST /api/auth/login`** (used by the login form).
 
+Send **`{ "email", "password" }`** when signing in with an email address, or **`{ "username", "password" }`** when signing in with a user’s **username** (set when the account is created in **Admin** or at bootstrap). The same session cookie applies in either case.
+
 Set **`auth.localLoginDisabledInProduction`** to enforce disabling password login when **`NODE_ENV=production`** (break-glass overrides should use SSO or console access).
 
 **Built-in administrator** (break-glass account) is configured under **`auth.builtinAdmin`**:

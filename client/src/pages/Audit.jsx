@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { projectPath } from '../lib/paths.js';
 
 export default function Audit() {
+  const navigate = useNavigate();
   const { projectId } = useParams();
   const { isAdmin, user } = useAuth();
   const [rows, setRows] = useState([]);
@@ -12,12 +13,35 @@ export default function Audit() {
   const allowed = user?.authDisabled || isAdmin || user?.global_roles?.includes('auditor');
 
   useEffect(() => {
+    let cancelled = false;
+    api.config().then((c) => {
+      if (cancelled) return;
+      if (c.iso26262Enabled !== true) {
+        navigate(projectPath(Number(projectId), 'dashboard'), { replace: true });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, projectId]);
+
+  useEffect(() => {
     if (!allowed) return;
     setError('');
-    api
-      .adminAudit(300)
-      .then(setRows)
-      .catch((e) => setError(e.message));
+    let cancelled = false;
+    (async () => {
+      try {
+        const c = await api.config();
+        if (cancelled || c.iso26262Enabled !== true) return;
+        const data = await api.adminAudit(300);
+        if (!cancelled) setRows(data);
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [allowed]);
 
   if (!allowed) {

@@ -180,7 +180,11 @@ export default function ProjectLayout() {
             <Link
               to={projectPath(pid, 'admin')}
               style={{ fontSize: '0.82rem', fontWeight: 600, color: accent, textDecoration: 'none' }}
-              title="Users, roles, teams, audit, baselines"
+              title={
+                cfg?.iso26262Enabled === true
+                  ? 'Users, roles, teams, audit, baselines'
+                  : 'Users, roles, teams, baselines'
+              }
             >
               Administration
             </Link>
@@ -278,15 +282,19 @@ export default function ProjectLayout() {
             <NavLink to={projectPath(pid, 'regressions')} className={sbClass}>
               Regressions
             </NavLink>
-            <NavLink to={projectPath(pid, 'iso')} className={sbClass}>
-              ISO 26262
-            </NavLink>
+            {cfg?.iso26262Enabled === true && (
+              <NavLink to={projectPath(pid, 'iso')} className={sbClass}>
+                ISO 26262
+              </NavLink>
+            )}
           </nav>
           <div className="nav-section-label">Project</div>
           <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <NavLink to={projectPath(pid, 'audit')} className={sbClass}>
-              Audit
-            </NavLink>
+            {cfg?.iso26262Enabled === true && (
+              <NavLink to={projectPath(pid, 'audit')} className={sbClass}>
+                Audit
+              </NavLink>
+            )}
             <NavLink to={projectPath(pid, 'settings')} className={sbClass}>
               Settings
             </NavLink>

@@ -24,14 +24,6 @@ export function getBuiltinLoginUsername() {
   return 'admin';
 }
 
-export function resolveLoginIdentifier(raw) {
-  const e = String(raw || '').trim().toLowerCase();
-  if (e === getBuiltinLoginUsername()) {
-    return getBuiltinAdminEmail();
-  }
-  return e;
-}
-
 export function isBuiltinAdminEmail(email) {
   return String(email || '').trim().toLowerCase() === getBuiltinAdminEmail();
 }
@@ -71,11 +63,11 @@ export function ensureBuiltinAdmin() {
   if (!existing) {
     const ins = db
       .prepare(
-        `INSERT INTO users (email, display_name, password_hash, enabled)
-         VALUES (?, 'admin', ?, 1)
+        `INSERT INTO users (email, display_name, username, password_hash, enabled)
+         VALUES (?, 'admin', ?, ?, 1)
          RETURNING id`
       )
-      .get(email, hash);
+      .get(email, getBuiltinLoginUsername(), hash);
     db.prepare(`INSERT INTO user_global_roles (user_id, role) VALUES (?, 'system_admin')`).run(ins.id);
     if (defaultProject?.id) {
       db.prepare(
@@ -85,7 +77,11 @@ export function ensureBuiltinAdmin() {
     return;
   }
 
-  db.prepare(`UPDATE users SET password_hash = ?, enabled = 1 WHERE email = ?`).run(hash, email);
+  db.prepare(`UPDATE users SET password_hash = ?, enabled = 1, username = ? WHERE email = ?`).run(
+    hash,
+    getBuiltinLoginUsername(),
+    email
+  );
   if (defaultProject?.id) {
     db.prepare(
       `INSERT OR IGNORE INTO user_project_roles (user_id, project_id, role) VALUES (?, ?, 'project_admin')`

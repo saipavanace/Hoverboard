@@ -4,7 +4,8 @@ import * as client from 'openid-client';
 import { db } from '../db.js';
 import { loadConfig } from '../config.js';
 import { hashPassword, verifyPassword } from '../services/password.js';
-import { resolveLoginIdentifier, isBuiltinAdminEmail } from '../services/builtinAdmin.js';
+import { isBuiltinAdminEmail } from '../services/builtinAdmin.js';
+import { findUserByLocalLogin, normalizeUsername, isReservedUsername } from '../services/username.js';
 import { appendAuditEvent } from '../services/auditEvents.js';
 import {
   authDisabled,
@@ -70,7 +71,7 @@ router.post('/bootstrap-first-admin', (req, res) => {
   if (n > 0) {
     return res.status(403).json({ error: 'bootstrap already completed' });
   }
-  const { email, password, display_name } = req.body || {};
+  const { email, password, display_name, username: usernameIn } = req.body || {};
   if (!email || !password || !display_name) {
     return res.status(400).json({ error: 'email, password, display_name required' });
   }
@@ -78,16 +79,28 @@ router.post('/bootstrap-first-admin', (req, res) => {
   if (isBuiltinAdminEmail(normalizedEmail)) {
     return res.status(403).json({ error: 'reserved email' });
   }
+  const usernameRaw =
+    usernameIn != null && String(usernameIn).trim() !== '' ? String(usernameIn) : normalizedEmail.split('@')[0];
+  const nu = normalizeUsername(usernameRaw);
+  if (!nu.ok) {
+    return res.status(400).json({ error: 'invalid username' });
+  }
+  if (isReservedUsername(nu.value)) {
+    return res.status(400).json({ error: 'reserved username' });
+  }
+  if (db.prepare(`SELECT id FROM users WHERE username = ?`).get(nu.value)) {
+    return res.status(409).json({ error: 'username exists' });
+  }
   const hash = hashPassword(password);
   const ins = db
     .prepare(
       `
-    INSERT INTO users (email, display_name, password_hash, enabled)
-    VALUES (?, ?, ?, 1)
+    INSERT INTO users (email, display_name, username, password_hash, enabled)
+    VALUES (?, ?, ?, ?, 1)
     RETURNING id
   `
     )
-    .get(normalizedEmail, String(display_name).trim(), hash);
+    .get(normalizedEmail, String(display_name).trim(), nu.value, hash);
 
   db.prepare(`INSERT INTO user_global_roles (user_id, role) VALUES (?, 'system_admin')`).run(ins.id);
 
@@ -125,10 +138,9 @@ router.post('/login', (req, res) => {
   }
   const rawLogin = req.body?.email ?? req.body?.username;
   const { password } = req.body || {};
-  if (!rawLogin || !password) return res.status(400).json({ error: 'email and password required' });
+  if (!rawLogin || !password) return res.status(400).json({ error: 'email or username and password required' });
 
-  const email = resolveLoginIdentifier(String(rawLogin).trim());
-  const user = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email);
+  const user = findUserByLocalLogin(String(rawLogin).trim());
   if (!user || !user.password_hash || !verifyPassword(password, user.password_hash)) {
     appendAuditEvent({
       actorUserId: null,

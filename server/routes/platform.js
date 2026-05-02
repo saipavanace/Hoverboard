@@ -5,6 +5,7 @@ import { authDisabled } from '../middleware/auth.js';
 import { can, hasGlobalRole, GLOBAL_ADMIN } from '../middleware/rbac.js';
 import { hashPassword } from '../services/password.js';
 import { isBuiltinAdminEmail } from '../services/builtinAdmin.js';
+import { normalizeUsername, isReservedUsername } from '../services/username.js';
 import { evaluateSignoff, computeApprovalSignature } from '../services/signoffEngine.js';
 import { requireProjectPermission } from '../middleware/permissions.js';
 import { projectIdFromArtifact } from '../services/projectResolution.js';
@@ -340,7 +341,7 @@ router.get('/admin/synced-groups', requireSystemAdmin, (_req, res) => {
 router.get('/admin/users', requireSystemAdmin, (_req, res) => {
   const users = db
     .prepare(
-      `SELECT id, email, display_name, enabled, created_at, team_id, manager_user_id, department, job_title FROM users ORDER BY id`
+      `SELECT id, email, username, display_name, enabled, created_at, team_id, manager_user_id, department, job_title FROM users ORDER BY id`
     )
     .all();
   const out = users.map((u) => ({
@@ -354,21 +355,32 @@ router.get('/admin/users', requireSystemAdmin, (_req, res) => {
 });
 
 router.post('/admin/users', requireSystemAdmin, (req, res) => {
-  const { email, display_name, password, global_roles, project_roles } = req.body || {};
-  if (!email || !display_name) return res.status(400).json({ error: 'email and display_name required' });
+  const { email, username, display_name, password, global_roles, project_roles } = req.body || {};
+  if (!email || !display_name || !username) {
+    return res.status(400).json({ error: 'email, display_name, and username required' });
+  }
   const em = String(email).trim().toLowerCase();
   if (isBuiltinAdminEmail(em)) return res.status(403).json({ error: 'reserved account' });
+  const nu = normalizeUsername(username);
+  if (!nu.ok) return res.status(400).json({ error: 'invalid username' });
+  if (isReservedUsername(nu.value)) return res.status(400).json({ error: 'reserved username' });
+  if (db.prepare(`SELECT id FROM users WHERE email = ?`).get(em)) {
+    return res.status(409).json({ error: 'email exists' });
+  }
+  if (db.prepare(`SELECT id FROM users WHERE username = ?`).get(nu.value)) {
+    return res.status(409).json({ error: 'username exists' });
+  }
   const hash = password ? hashPassword(String(password)) : null;
   try {
     const ins = db
       .prepare(
         `
-      INSERT INTO users (email, display_name, password_hash, enabled)
-      VALUES (?, ?, ?, 1)
+      INSERT INTO users (email, display_name, username, password_hash, enabled)
+      VALUES (?, ?, ?, ?, 1)
       RETURNING id
     `
       )
-      .get(em, String(display_name).trim(), hash);
+      .get(em, String(display_name).trim(), nu.value, hash);
 
     for (const r of global_roles || []) {
       db.prepare(`INSERT INTO user_global_roles (user_id, role) VALUES (?, ?)`).run(ins.id, r);
@@ -386,13 +398,15 @@ router.post('/admin/users', requireSystemAdmin, (req, res) => {
       action: 'ADMIN_USER_CREATE',
       entityType: 'USER',
       entityId: String(ins.id),
-      detail: { email: em },
+      detail: { email: em, username: nu.value },
       mirrorLegacy: true,
     });
 
     res.status(201).json({ id: ins.id });
   } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'email exists' });
+    if (String(e.message).includes('UNIQUE')) {
+      return res.status(409).json({ error: 'email or username already exists' });
+    }
     throw e;
   }
 });
@@ -402,9 +416,23 @@ router.patch('/admin/users/:id', requireSystemAdmin, (req, res) => {
   const row = db.prepare(`SELECT email FROM users WHERE id = ?`).get(id);
   if (!row) return res.status(404).json({ error: 'not found' });
   if (isBuiltinAdminEmail(row.email)) return res.status(403).json({ error: 'built-in administrator cannot be modified' });
-  const { enabled, display_name, team_id, manager_user_id, department, job_title } = req.body || {};
+  const { enabled, display_name, username, team_id, manager_user_id, department, job_title } = req.body || {};
   const sets = [];
   const vals = [];
+  if (username !== undefined) {
+    if (username === null || username === '') {
+      sets.push('username = ?');
+      vals.push(null);
+    } else {
+      const nu = normalizeUsername(username);
+      if (!nu.ok) return res.status(400).json({ error: 'invalid username' });
+      if (isReservedUsername(nu.value)) return res.status(400).json({ error: 'reserved username' });
+      const taken = db.prepare(`SELECT id FROM users WHERE username = ? AND id != ?`).get(nu.value, id);
+      if (taken) return res.status(409).json({ error: 'username exists' });
+      sets.push('username = ?');
+      vals.push(nu.value);
+    }
+  }
   if (enabled !== undefined) {
     sets.push('enabled = ?');
     vals.push(enabled ? 1 : 0);

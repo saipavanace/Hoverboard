@@ -1,21 +1,32 @@
 import fs from 'fs';
 import path from 'path';
 
-const DEFAULT_VR_REGEX =
-  /(?:UVM_INFO|uvm_info|UVM_NOTE)[\s\S]{0,200}?\b(VR[-_]\d{1,8})\b/i;
+const REQ_PREFIX = '(?:VR|SR|CR|AR)';
 
-const FALLBACK_VR_REGEX = /\b(VR[-_]\d{1,8})\b/i;
+/** Every verification token on a line (used after line qualifies as UVM-style / strict). */
+const ID_TOKEN_RE = new RegExp(`\\b(${REQ_PREFIX}[-_]\\d{1,8})\\b`, 'gi');
+
+const FALLBACK_VR_REGEX = new RegExp(`\\b(${REQ_PREFIX}[-_]\\d{1,8})\\b`, 'i');
+
+const UVM_LINE_QUALIFIER = /(?:UVM_INFO|uvm_info|UVM_NOTE)/i;
 
 const DEFAULT_FILES = [/\.log$/i, /\.txt$/i, /\.out$/i];
 
-/** Normalize log tokens (VR_003, VR-3) to canonical DB form VR-00003 */
-export function canonicalVrPublicId(raw) {
+/**
+ * Normalize log tokens (VR_003, SR-3, CR_001) to canonical PREFIX-00003.
+ */
+export function canonicalRequirementPublicId(raw) {
   const s = String(raw).trim().toUpperCase().replace(/_/g, '-');
-  const m = s.match(/^VR-(\d+)$/);
+  const m = s.match(/^(VR|SR|CR|AR)-(\d+)$/);
   if (!m) return s;
-  const n = parseInt(m[1], 10);
+  const n = parseInt(m[2], 10);
   if (Number.isNaN(n)) return s;
-  return `VR-${String(n).padStart(5, '0')}`;
+  return `${m[1]}-${String(n).padStart(5, '0')}`;
+}
+
+/** @deprecated use canonicalRequirementPublicId */
+export function canonicalVrPublicId(raw) {
+  return canonicalRequirementPublicId(raw);
 }
 
 /**
@@ -44,25 +55,49 @@ export function compileVrRegex(input) {
   }
 }
 
+/** All capture-group-1 matches on a line (regex must define one capture for the id token). */
+function matchAllIdCaptures(line, regex) {
+  if (!regex) return [];
+  const flags = regex.flags.includes('g') ? regex.flags : `${regex.flags}g`;
+  const re = new RegExp(regex.source, flags);
+  const out = [];
+  let m;
+  while ((m = re.exec(line)) !== null) {
+    if (m[1]) out.push(m[1]);
+  }
+  return out;
+}
+
+function strictLineQualifies(line, customRe) {
+  if (customRe) {
+    const flags = customRe.flags.replace(/g/g, '');
+    return new RegExp(customRe.source, flags).test(line);
+  }
+  return UVM_LINE_QUALIFIER.test(line);
+}
+
 /**
- * Scan a single text and return Map of canonical VR public_id -> hit count.
- * - When `strictUvmInfo` is true, only UVM_INFO-like lines count.
- * - Otherwise also accepts a bare VR reference as a fallback.
+ * Scan a single text and return Map of canonical requirement public_id -> hit count.
+ * - When `strictUvmInfo` is true, only lines matching the configured pattern (or UVM_INFO) are scanned;
+ *   then every VR/SR/CR/AR token on that line is counted.
+ * - Otherwise every line is scanned for id tokens; if none, a single fallback match is tried per line.
  */
 export function scanContents(text, opts = {}) {
   const strict = opts.strictUvmInfo !== false;
   const customRe = compileVrRegex(opts.regex);
-  const primary = customRe || DEFAULT_VR_REGEX;
   const lines = String(text || '').split(/\r?\n/);
   const found = new Map();
   for (const raw of lines) {
     const line = raw.slice(0, 1200);
-    let m = primary.exec(line);
-    if (!m && !strict) {
-      m = FALLBACK_VR_REGEX.exec(line);
+    if (strict && !strictLineQualifies(line, customRe)) continue;
+
+    let caps = matchAllIdCaptures(line, ID_TOKEN_RE);
+    if (!caps.length && !strict) {
+      const m = FALLBACK_VR_REGEX.exec(line);
+      if (m?.[1]) caps = [m[1]];
     }
-    if (m && m[1]) {
-      const id = canonicalVrPublicId(m[1]);
+    for (const cap of caps) {
+      const id = canonicalRequirementPublicId(cap);
       found.set(id, (found.get(id) || 0) + 1);
     }
   }

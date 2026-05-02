@@ -20,15 +20,23 @@ export default function Admin() {
   const [teamForm, setTeamForm] = useState({ name: '', parent_team_id: '', department: '' });
   const [createUser, setCreateUser] = useState({
     email: '',
+    username: '',
     display_name: '',
     password: '',
     global_roles: '',
     project_role: 'engineer',
     assignProject: true,
   });
+  const [appCfg, setAppCfg] = useState(null);
 
   useEffect(() => {
-    if (!canManageUsers && tab === 'users') setTab('audit');
+    api.config().then(setAppCfg).catch(() => setAppCfg({}));
+  }, []);
+
+  useEffect(() => {
+    if (!canManageUsers && (tab === 'users' || tab === 'auth' || tab === 'audit')) {
+      setTab('teams');
+    }
   }, [canManageUsers, tab]);
 
   useEffect(() => {
@@ -41,7 +49,7 @@ export default function Admin() {
         .then(setUsers)
         .catch((e) => setError(e.message));
     }
-    if (tab === 'audit') {
+    if (tab === 'audit' && canManageUsers) {
       api
         .adminAudit(200)
         .then(setAudit)
@@ -126,19 +134,24 @@ export default function Admin() {
   }
 
   const teamById = Object.fromEntries(teams.map((t) => [t.id, t]));
+  const builtinAdminEmail = String(appCfg?.authUi?.builtinAdminEmail || '')
+    .trim()
+    .toLowerCase();
 
   return (
     <>
       <h1 className="page-title">Administration</h1>
       <p className="page-lede">
-        Users, teams, audit trail, baselines, and sign-off policies. Pick a project in the header to scope teams and
-        hierarchy fields.
+        {canManageUsers
+          ? 'Users, teams, platform audit trail, baselines, and sign-off policies.'
+          : 'Teams, baselines, and sign-off policies.'}{' '}
+        Pick a project in the header to scope teams and hierarchy fields.
       </p>
 
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         {(canManageUsers
           ? ['users', 'auth', 'teams', 'audit', 'baselines', 'signoff']
-          : ['teams', 'audit', 'baselines', 'signoff']
+          : ['teams', 'baselines', 'signoff']
         ).map((t) => (
           <button
             key={t}
@@ -176,8 +189,8 @@ export default function Admin() {
             <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Add local user</div>
             <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
               Creates a password-capable account (local provider). For SSO, users typically appear after first sign-in; use
-              this for service accounts, labs, or before IdP sync. Global roles are comma-separated (e.g.{' '}
-              <code>auditor</code>); use sparingly.
+              this for service accounts, labs, or before IdP sync. Users sign in with <strong>email or username</strong>{' '}
+              plus password. Global roles are comma-separated (e.g. <code>auditor</code>); use sparingly.
             </p>
             <div
               style={{
@@ -195,6 +208,17 @@ export default function Admin() {
                   value={createUser.email}
                   onChange={(e) => setCreateUser({ ...createUser, email: e.target.value })}
                   autoComplete="off"
+                />
+              </label>
+              <label>
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Username</div>
+                <input
+                  className="field-input"
+                  type="text"
+                  autoComplete="off"
+                  value={createUser.username}
+                  onChange={(e) => setCreateUser({ ...createUser, username: e.target.value })}
+                  placeholder="e.g. jdoe"
                 />
               </label>
               <label>
@@ -264,6 +288,7 @@ export default function Admin() {
                       .filter(Boolean);
                     await api.adminCreateUser({
                       email: createUser.email.trim(),
+                      username: createUser.username.trim(),
                       display_name: createUser.display_name.trim(),
                       password: createUser.password || undefined,
                       global_roles,
@@ -274,6 +299,7 @@ export default function Admin() {
                     });
                     setCreateUser({
                       email: '',
+                      username: '',
                       display_name: '',
                       password: '',
                       global_roles: '',
@@ -307,6 +333,7 @@ export default function Admin() {
                 <tr>
                   <th>ID</th>
                   <th>Email</th>
+                  <th>Username</th>
                   <th>Name</th>
                   <th>Enabled</th>
                   <th>Department</th>
@@ -320,6 +347,29 @@ export default function Admin() {
                   <tr key={u.id}>
                     <td>{u.id}</td>
                     <td>{u.email}</td>
+                    <td>
+                      <input
+                        className="field-input"
+                        style={{ fontSize: '0.82rem', minWidth: 100 }}
+                        defaultValue={u.username || ''}
+                        key={`user-${u.id}-username-${u.username ?? ''}`}
+                        disabled={Boolean(
+                          builtinAdminEmail && u.email && u.email.toLowerCase() === builtinAdminEmail
+                        )}
+                        title={
+                          builtinAdminEmail && u.email?.toLowerCase() === builtinAdminEmail
+                            ? 'Built-in admin username is managed in server config'
+                            : undefined
+                        }
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          const cur = (u.username || '').trim();
+                          if (v !== cur) {
+                            patchUser(u.id, { username: v || null });
+                          }
+                        }}
+                      />
+                    </td>
                     <td>{u.display_name}</td>
                     <td>{u.enabled ? 'yes' : 'no'}</td>
                     <td>
@@ -617,7 +667,7 @@ export default function Admin() {
         </div>
       )}
 
-      {tab === 'audit' && (
+      {tab === 'audit' && canManageUsers && (
         <div className="table-wrap">
           <table>
             <thead>

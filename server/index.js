@@ -18,6 +18,7 @@ import { getBuiltinAdminEmail } from './services/builtinAdmin.js';
 import { scanRegressionDirectory } from './services/regressionAdapter.js';
 import { scanCoverageDirectory } from './services/coverageAdapter.js';
 import { scanDirectory as scanVrDirectory, extractTestNameFromLogPath } from './services/vrCoverage.js';
+import { normalizeVrKind, kindToIdParts } from './services/vrKind.js';
 import { syncLegacyArtifacts, versionVrArtifactFromRow } from './services/legacyArtifactSync.js';
 import { createArtifactWithFirstVersion } from './services/artifactStore.js';
 import { attachAuth, requireApiAuth, authDisabled } from './middleware/auth.js';
@@ -76,6 +77,7 @@ function validateRequirementCategory(category, cfg) {
 }
 
 function mapVrToClient(v, extra = {}) {
+  const vrKind = v.vr_kind || 'VR';
   const linkStmt = db.prepare(`
     SELECT dr.public_id FROM vr_dr_links v JOIN drs dr ON v.dr_id = dr.id WHERE v.vr_id = ?
   `);
@@ -95,6 +97,8 @@ function mapVrToClient(v, extra = {}) {
   const testsFromLogs = [...new Set(regressionLogs.map((x) => x.test).filter(Boolean))];
   return {
     ...v,
+    kind: vrKind,
+    vr_kind: vrKind,
     labels: parseLabelsJson(v.labels),
     evidence_links,
     linked_dr_public_ids: linkStmt.all(v.id).map((r) => r.public_id),
@@ -150,6 +154,7 @@ app.get('/api/config', (_req, res) => {
       ldapLoginEnabled: Boolean(cfg.auth?.ldap?.enabled && cfg.auth?.ldap?.url),
       builtinLoginUsername: cfg.auth?.builtinAdmin?.username?.trim() || 'admin',
       builtinAdminEmail: getBuiltinAdminEmail(),
+      iso26262Enabled: cfg.iso26262Enabled === true,
     },
   });
 });
@@ -177,6 +182,7 @@ app.put(
           ldapLoginEnabled: Boolean(next.auth?.ldap?.enabled && next.auth?.ldap?.url),
           builtinLoginUsername: next.auth?.builtinAdmin?.username?.trim() || 'admin',
           builtinAdminEmail: getBuiltinAdminEmail(),
+          iso26262Enabled: next.iso26262Enabled === true,
         },
       });
     } catch (e) {
@@ -795,16 +801,26 @@ app.post(
   const projectId = drProj?.project_id ?? defaultProjectId();
   const actorId = req.authUser?.id ?? null;
 
-  const publicId = nextPublicId('VR', 'vr');
+  const rawKind = body.kind ?? body.vr_kind;
+  let vrKind;
+  if (rawKind !== undefined && rawKind !== null && String(rawKind).trim() !== '') {
+    vrKind = normalizeVrKind(rawKind);
+    if (!vrKind) return res.status(400).json({ error: 'kind must be one of: VR, SR, CR, AR' });
+  } else {
+    vrKind = 'VR';
+  }
+  const { prefix, counterKey } = kindToIdParts(vrKind);
+  const publicId = nextPublicId(prefix, counterKey);
   const vr = db
     .prepare(
       `
-    INSERT INTO vrs (public_id, title, description, status, priority, owner, location_scope, verification_method, milestone_gate, evidence_links, last_verified, asil, category, labels, project_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?) RETURNING id
+    INSERT INTO vrs (public_id, vr_kind, title, description, status, priority, owner, location_scope, verification_method, milestone_gate, evidence_links, last_verified, asil, category, labels, project_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?) RETURNING id
   `
     )
     .get(
       publicId,
+      vrKind,
       title.trim(),
       description || '',
       body.status || 'draft',
@@ -825,7 +841,8 @@ app.post(
   }
 
   const content = {
-    kind: 'VR',
+    kind: vrKind,
+    vr_kind: vrKind,
     public_id: publicId,
     title: title.trim(),
     description: description || '',
@@ -997,6 +1014,7 @@ app.get('/api/vrs', requireListAccess('vrs_read'), (req, res) => {
   const category = String(req.query.category || '').trim() || null;
   const status = String(req.query.status || '').trim() || null;
   const priority = String(req.query.priority || '').trim() || null;
+  const kindFilter = normalizeVrKind(req.query.kind || req.query.vr_kind);
 
   let sql = 'SELECT * FROM vrs WHERE 1=1';
   const params = [];
@@ -1004,6 +1022,10 @@ app.get('/api/vrs', requireListAccess('vrs_read'), (req, res) => {
     const ph = req.listProjectIds.map(() => '?').join(',');
     sql += ` AND project_id IN (${ph})`;
     params.push(...req.listProjectIds);
+  }
+  if (kindFilter) {
+    sql += ' AND vr_kind = ?';
+    params.push(kindFilter);
   }
   if (category) {
     sql += ' AND category = ?';
@@ -1484,48 +1506,61 @@ function walkFailures(dir, acc, budget) {
   }
 }
 
+function requireIso26262Enabled(_req, res, next) {
+  if (loadConfig().iso26262Enabled !== true) {
+    return res.status(404).json({ error: 'ISO 26262 features are disabled in server configuration' });
+  }
+  next();
+}
+
 /** --- ISO --- */
 app.get(
   '/api/iso/traceability.csv',
+  requireIso26262Enabled,
   requireProjectPermission('iso_read', resolveWithDefaultProject),
-  (_req, res) => {
-  const rows = db
-    .prepare(
-      `
-    SELECT v.public_id AS vr_id, v.title AS vr_title, v.status AS vr_status, v.asil AS vr_asil,
+  (req, res) => {
+    const pid = req.resolvedProjectId;
+    const rows = db
+      .prepare(
+        `
+    SELECT v.public_id AS vr_id, v.vr_kind AS vr_kind, v.title AS vr_title, v.status AS vr_status, v.asil AS vr_asil,
            v.category AS vr_category,
            d.public_id AS dr_id, d.excerpt AS dr_excerpt, d.stale AS dr_stale, d.category AS dr_category
     FROM vrs v
     LEFT JOIN vr_dr_links l ON v.id = l.vr_id
     LEFT JOIN drs d ON l.dr_id = d.id
+    WHERE v.project_id = ?
     ORDER BY v.id
   `
-    )
-    .all();
-  const header =
-    'vr_id,vr_title,vr_status,vr_asil,vr_category,dr_id,dr_excerpt,dr_stale,dr_category\n';
-  const body = rows
-    .map((r) =>
-      [
-        r.vr_id,
-        csvEscape(r.vr_title),
-        r.vr_status,
-        r.vr_asil || '',
-        r.vr_category || '',
-        r.dr_id || '',
-        csvEscape((r.dr_excerpt || '').slice(0, 200)),
-        r.dr_stale,
-        r.dr_category || '',
-      ].join(',')
-    )
-    .join('\n');
-  res.setHeader('Content-Type', 'text/csv');
-  res.send(header + body);
+      )
+      .all(pid);
+    const header =
+      'vr_id,vr_kind,vr_title,vr_status,vr_asil,vr_category,dr_id,dr_excerpt,dr_stale,dr_category\n';
+    const body = rows
+      .map((r) =>
+        [
+          r.vr_id,
+          r.vr_kind || 'VR',
+          csvEscape(r.vr_title),
+          r.vr_status,
+          r.vr_asil || '',
+          r.vr_category || '',
+          r.dr_id || '',
+          csvEscape((r.dr_excerpt || '').slice(0, 200)),
+          r.dr_stale,
+          r.dr_category || '',
+        ].join(',')
+      )
+      .join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="traceability-matrix.csv"');
+    res.send(header + body);
   }
 );
 
 app.get(
   '/api/iso/audit-log',
+  requireIso26262Enabled,
   requireProjectPermission('iso_read', resolveWithDefaultProject),
   (_req, res) => {
     const rows = db.prepare(`SELECT * FROM audit_log ORDER BY id DESC LIMIT 500`).all();

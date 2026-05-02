@@ -150,6 +150,14 @@ INSERT OR IGNORE INTO counters (key, value) VALUES ('dr', 0), ('vr', 0);
   addCol('vrs', 'project_id', 'project_id INTEGER');
   addCol('vrs', 'stale', 'stale INTEGER DEFAULT 0');
   addCol('vrs', 'stale_reason', 'stale_reason TEXT');
+  addCol('vrs', 'vr_kind', `vr_kind TEXT NOT NULL DEFAULT 'VR'`);
+})();
+
+/** Separate ID sequences for SR / CR / AR (verification requirement kinds). */
+(() => {
+  for (const key of ['sr', 'cr', 'ar']) {
+    db.prepare(`INSERT OR IGNORE INTO counters (key, value) VALUES (?, 0)`).run(key);
+  }
 })();
 
 db.exec(`
@@ -392,6 +400,13 @@ CREATE TABLE IF NOT EXISTS user_synced_groups (
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${defSql}`);
   };
   addCol('users', 'job_title', 'job_title TEXT');
+  addCol('users', 'username', 'username TEXT');
+  const idx = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type='index' AND name='users_username_unique'`)
+    .get();
+  if (!idx) {
+    db.exec(`CREATE UNIQUE INDEX users_username_unique ON users(username) WHERE username IS NOT NULL`);
+  }
 })();
 
 /** evidence_files columns (table created above) */

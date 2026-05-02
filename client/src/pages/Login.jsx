@@ -37,7 +37,9 @@ export default function Login() {
     setError('');
     setBusy(true);
     try {
-      await api.authLogin({ email: email.trim(), password });
+      const id = email.trim();
+      const body = id.includes('@') ? { email: id, password } : { username: id, password };
+      await api.authLogin(body);
       await refresh();
       navigate(from, { replace: true });
     } catch (err) {
@@ -187,14 +189,14 @@ export default function Login() {
           {showLocal && (
             <form onSubmit={onSubmit} style={{ display: 'grid', gap: '0.85rem' }}>
               <label>
-                <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Username</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Email or username</div>
                 <input
                   className="field-input"
                   type="text"
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={authUi?.builtinLoginUsername || 'admin'}
+                  placeholder={authUi?.builtinLoginUsername ? `${authUi.builtinLoginUsername} or you@company.com` : 'you@company.com'}
                   required
                 />
               </label>

@@ -26,12 +26,26 @@ describe('vrCoverage.scanContents', () => {
     const found = scanContents('UVM_INFO ../ VR_003 done', { strictUvmInfo: false });
     expect(found.get('VR-00003')).toBe(1);
   });
+
+  it('detects SR / CR / AR ids in UVM_INFO lines', () => {
+    const text =
+      'UVM_INFO: checkpoint SR-00001 CR_002 AR-00003';
+    const found = scanContents(text);
+    expect(found.get('SR-00001')).toBe(1);
+    expect(found.get('CR-00002')).toBe(1);
+    expect(found.get('AR-00003')).toBe(1);
+  });
 });
 
 describe('canonicalVrPublicId', () => {
-  it('pads numeric suffix', () => {
+  it('pads numeric suffix for VR', () => {
     expect(canonicalVrPublicId('VR_3')).toBe('VR-00003');
     expect(canonicalVrPublicId('VR-003')).toBe('VR-00003');
+  });
+
+  it('pads numeric suffix for SR and CR', () => {
+    expect(canonicalVrPublicId('SR_12')).toBe('SR-00012');
+    expect(canonicalVrPublicId('CR-004')).toBe('CR-00004');
   });
 });
 

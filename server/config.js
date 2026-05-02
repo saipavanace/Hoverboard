@@ -51,7 +51,11 @@ const defaults = {
     ],
   },
   vrLogRegex:
-    '(?:UVM_INFO|uvm_info|UVM_NOTE)[\\s\\S]{0,200}?\\b(VR[-_]\\d{1,8})\\b',
+    '(?:UVM_INFO|uvm_info|UVM_NOTE)[\\s\\S]{0,200}?\\b((?:VR|SR|CR|AR)[-_]\\d{1,8})\\b',
+  /**
+   * When true, enable /api/iso/* and show the ISO 26262 workspace + project Audit nav. Default false (opt-in).
+   */
+  iso26262Enabled: false,
   auth: {
     /** When false, users must sign in. Set HOVERBOARD_AUTH_DISABLED=true for local dev without login. */
     disabled: false,

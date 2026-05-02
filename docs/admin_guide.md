@@ -17,7 +17,7 @@ Administrators reach **Administration** from **`/projects/:projectId/admin`** (l
 | **baselines** | Baseline records |
 | **signoff** | Sign-off policy rules |
 
-Exact visibility depends on your roles and server configuration. Non–system-admins may see **teams**, **audit**, **baselines**, and **signoff** without the **users** / **auth** tabs.
+Exact visibility depends on your roles and server configuration. Non–system-admins may see **teams**, **baselines**, and **signoff** without the **users** / **auth** / **audit** tabs. The platform **audit** tab is for system administrators only.
 
 ---
 
@@ -29,7 +29,7 @@ Exact visibility depends on your roles and server configuration. Non–system-ad
 
 System administrators use the **Users** tab **Add local user** form (or **`POST /api/admin/users`**):
 
-1. **Email** and **display name** (required); **initial password** optional (user can reset via your process or SSO later).
+1. **Email**, **username**, and **display name** (required). Usernames are lowercase letters, digits, `.`, `_`, and `-` (max 64 characters). Users can sign in with **email or username** plus password. **Initial password** is optional (user can reset via your process or SSO later).
 2. Optional **global roles** (comma-separated), e.g. `auditor` — use **`system_admin`** only when appropriate.
 3. Optionally assign an initial **project role** for the **currently selected project** in the header (viewer … project_admin).
 

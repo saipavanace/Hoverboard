@@ -69,8 +69,10 @@ export function syncLegacyArtifacts() {
   for (const vr of vrs) {
     const projectId = vr.project_id || pid;
     const tx = db.transaction(() => {
+      const vk = vr.vr_kind || 'VR';
       const content = {
-        kind: 'VR',
+        kind: vk,
+        vr_kind: vk,
         public_id: vr.public_id,
         title: vr.title,
         description: vr.description,
@@ -121,8 +123,10 @@ export function syncLegacyArtifacts() {
  */
 export function versionVrArtifactFromRow(vrRow, actorUserId) {
   if (!vrRow.artifact_id) return;
+  const vk = vrRow.vr_kind || 'VR';
   const content = {
-    kind: 'VR',
+    kind: vk,
+    vr_kind: vk,
     public_id: vrRow.public_id,
     title: vrRow.title,
     description: vrRow.description,

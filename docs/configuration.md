@@ -25,6 +25,7 @@ Environment overrides:
 | **`regressionParsers`** | `{ name, regex }[]` | Line classifiers for regression ingest |
 | **`coverageRegex`** | object | See below |
 | **`vrLogRegex`** | string | Regex to capture VR public IDs from log lines |
+| **`iso26262Enabled`** | boolean | **`false`** (default) — ISO 26262 workspace, project **Audit** nav, and `/api/iso/*` are off. Set **`true`** to enable them (opt-in) |
 | **`auth`** | object | Authentication — **see dedicated section** |
 
 ---

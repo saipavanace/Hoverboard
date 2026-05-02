@@ -31,7 +31,7 @@ describe('VRs page', () => {
       </MemoryRouter>
     );
 
-    const saveBtn = await screen.findByRole('button', { name: /save vr/i });
+    const saveBtn = await screen.findByRole('button', { name: /save requirement/i });
     expect(saveBtn).toBeDisabled();
     expect(
       screen.getByText(/title, category, and at least one linked dr are required/i)

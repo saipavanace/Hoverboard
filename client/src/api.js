@@ -101,6 +101,20 @@ export const api = {
   vrCoverage: () => json('/api/vr-coverage'),
   drCoverage: () => json('/api/dr-coverage'),
   isoAudit: () => json('/api/iso/audit-log'),
+  /** CSV export; requires same session + X-Project-Id as other project APIs. */
+  isoTraceabilityCsv: async () => {
+    const r = await fetch('/api/iso/traceability.csv', {
+      credentials: 'include',
+      headers: projectHeaders(),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      const e = new Error(err.error || r.statusText);
+      e.status = r.status;
+      throw e;
+    }
+    return r.blob();
+  },
   demoSeed: () => json('/api/demo/seed', { method: 'POST' }),
 
   authMe: () => json('/api/auth/me'),

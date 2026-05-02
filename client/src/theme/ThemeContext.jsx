@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 const STORAGE_KEY = 'hoverboard-theme';
 
 const ThemeContext = createContext({
-  theme: 'dark',
+  theme: 'light',
   setTheme: () => {},
   toggle: () => {},
 });
@@ -16,7 +16,7 @@ export function ThemeProvider({ children }) {
     } catch {
       /* ignore */
     }
-    return 'dark';
+    return 'light';
   });
 
   useEffect(() => {

@@ -6,6 +6,12 @@ import ArtifactThreads from '../components/ArtifactThreads.jsx';
 
 const STATUS_OPTIONS = ['draft', 'ready', 'in verification', 'blocked', 'done', 'closed'];
 const PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'];
+const KIND_OPTIONS = [
+  { value: 'VR', label: 'VR — verification requirement' },
+  { value: 'SR', label: 'SR — stimulus requirement' },
+  { value: 'CR', label: 'CR — coverage requirement' },
+  { value: 'AR', label: 'AR — assertion requirement' },
+];
 
 export default function VRs() {
   const { projectId } = useParams();
@@ -15,11 +21,13 @@ export default function VRs() {
   const [categories, setCategories] = useState([]);
   const [filters, setFilters] = useState({
     q: '',
+    kind: '',
     category: '',
     status: '',
     priority: '',
   });
   const [form, setForm] = useState({
+    kind: 'VR',
     title: '',
     description: '',
     category: '',
@@ -28,8 +36,6 @@ export default function VRs() {
     priority: 'P2',
     owner: '',
     location_scope: '',
-    asil: '',
-    showIsoAsil: false,
   });
   const [linkedDrIds, setLinkedDrIds] = useState([]);
   const [drSearch, setDrSearch] = useState('');
@@ -120,15 +126,16 @@ export default function VRs() {
     <>
       <h1 className="page-title">Verification requirements</h1>
       <p className="page-lede">
-        VRs use categories and labels for navigation. Each VR must link to at least one{' '}
-        <strong>existing</strong> DR — pick from the typeahead (unknown IDs cannot be saved). Optional
-        ASIL is available under ISO reporting when needed. <strong>Coverage</strong> is computed only from
-        regression log scans (<code>VR-…</code> / <code>VR_…</code> matches); there is no manual “covered”
-        toggle — run <strong>Regressions → VR log scan</strong> with a directory the API can read.
+        Create items with IDs <code>VR-…</code>, <code>SR-…</code>, <code>CR-…</code>, or <code>AR-…</code>{' '}
+        (stimulus, coverage, and assertion requirements share this workflow). Each item must link to at least one{' '}
+        <strong>existing</strong> DR — pick from the typeahead (unknown IDs cannot be saved).{' '}
+        <strong>Coverage</strong> is computed from regression log scans matching those IDs (
+        <code>VR_…</code> / <code>SR_…</code> etc.); run <strong>Regressions → VR log scan</strong> with a directory the
+        API can read.
       </p>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Create VR</div>
+        <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Create verification requirement</div>
         <div
           style={{
             display: 'grid',
@@ -136,6 +143,20 @@ export default function VRs() {
             gap: '0.65rem',
           }}
         >
+          <label>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Type *</div>
+            <select
+              className="field-input"
+              value={form.kind}
+              onChange={(e) => setForm({ ...form, kind: e.target.value })}
+            >
+              {KIND_OPTIONS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Title *</div>
             <input
@@ -302,29 +323,6 @@ export default function VRs() {
               ))}
             </div>
           </label>
-
-          <div style={{ gridColumn: '1 / -1' }}>
-            <button
-              type="button"
-              className="btn-ghost"
-              style={{ padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
-              onClick={() => setForm((f) => ({ ...f, showIsoAsil: !f.showIsoAsil }))}
-            >
-              {form.showIsoAsil ? '▼' : '▶'} ISO reporting (optional ASIL)
-            </button>
-            {form.showIsoAsil && (
-              <label style={{ display: 'block', marginTop: '0.65rem' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>ASIL (traceability)</div>
-                <input
-                  className="field-input"
-                  value={form.asil}
-                  placeholder="ASIL-D"
-                  onChange={(e) => setForm({ ...form, asil: e.target.value })}
-                  style={{ maxWidth: 280 }}
-                />
-              </label>
-            )}
-          </div>
         </div>
         <button
           type="button"
@@ -333,6 +331,7 @@ export default function VRs() {
           disabled={!canSave}
           onClick={async () => {
             await api.createVr({
+              kind: form.kind,
               title: form.title,
               description: form.description,
               category: form.category,
@@ -341,21 +340,20 @@ export default function VRs() {
               priority: form.priority,
               owner: form.owner || undefined,
               location_scope: form.location_scope || undefined,
-              asil: form.asil.trim() || undefined,
               drPublicIds: linkedDrIds,
             });
             setForm({
               ...form,
+              kind: 'VR',
               title: '',
               description: '',
               labels: '',
-              asil: '',
             });
             setLinkedDrIds([]);
             refreshAfterSave();
           }}
         >
-          Save VR
+          Save requirement
         </button>
         {!canSave && (
           <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginTop: '0.5rem' }}>
@@ -382,6 +380,21 @@ export default function VRs() {
               placeholder="Keywords…"
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
             />
+          </label>
+          <label>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Type</div>
+            <select
+              className="field-input"
+              value={filters.kind}
+              onChange={(e) => setFilters({ ...filters, kind: e.target.value })}
+            >
+              <option value="">All</option>
+              {KIND_OPTIONS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.value}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Category</div>
@@ -441,7 +454,8 @@ export default function VRs() {
         <table>
           <thead>
             <tr>
-              <th>VR ID</th>
+              <th>Type</th>
+              <th>ID</th>
               <th>Title</th>
               <th>Covered (logs)</th>
               <th>Tests (logs)</th>
@@ -468,6 +482,7 @@ export default function VRs() {
                   setSelectedVrPublicId((cur) => (cur === v.public_id ? null : v.public_id))
                 }
               >
+                <td>{v.kind || v.vr_kind || 'VR'}</td>
                 <td style={{ fontFamily: 'var(--mono)', fontSize: '0.82rem' }}>{v.public_id}</td>
                 <td>{v.title}</td>
                 <td>
@@ -535,7 +550,7 @@ export default function VRs() {
                       setDeleteErr('');
                       if (
                         !window.confirm(
-                          `Permanently delete VR ${v.public_id}? This cannot be undone.`
+                          `Permanently delete ${v.public_id}? This cannot be undone.`
                         )
                       )
                         return;

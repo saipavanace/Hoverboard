@@ -1,5 +1,51 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
+
+function findMatchStarts(haystack, needle) {
+  if (!needle) return [];
+  const out = [];
+  let i = 0;
+  while (i <= haystack.length - needle.length) {
+    const j = haystack.indexOf(needle, i);
+    if (j === -1) break;
+    out.push(j);
+    i = j + 1;
+  }
+  return out;
+}
+
+/** Scroll textarea vertically so the line containing `charIndex` is in view; browser handles horizontal for selections. */
+function scrollTextareaToCharIndex(textarea, charIndex) {
+  const value = textarea.value;
+  const idx = Math.max(0, Math.min(charIndex, value.length));
+  const before = value.slice(0, idx);
+  const lineNumber = before.split('\n').length - 1;
+  const style = window.getComputedStyle(textarea);
+  let lineHeightPx = 18;
+  const lh = style.lineHeight;
+  if (lh && lh !== 'normal') {
+    const n = parseFloat(lh);
+    if (!Number.isNaN(n)) lineHeightPx = n;
+  } else {
+    lineHeightPx = Math.round((parseFloat(style.fontSize) || 13) * 1.35);
+  }
+  const padTop = parseFloat(style.paddingTop) || 0;
+  const lineTop = lineNumber * lineHeightPx + padTop;
+  const viewH = textarea.clientHeight;
+  textarea.scrollTop = Math.max(0, lineTop - viewH * 0.35);
+}
+
+function focusSelectAndScroll(textarea, start, needleLen) {
+  const end = start + needleLen;
+  textarea.focus();
+  textarea.setSelectionRange(start, end);
+  scrollTextareaToCharIndex(textarea, start);
+  requestAnimationFrame(() => {
+    textarea.setSelectionRange(start, end);
+    scrollTextareaToCharIndex(textarea, start);
+    textarea.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
 
 function stripEphemeralKeys(obj) {
   if (!obj || typeof obj !== 'object') return obj;
@@ -13,6 +59,41 @@ export default function Settings() {
   const [builtinEmail, setBuiltinEmail] = useState('');
   const [builtinUsername, setBuiltinUsername] = useState('');
   const [builtinPassword, setBuiltinPassword] = useState('');
+  const [jsonFind, setJsonFind] = useState('');
+  /** -1 = no match navigated yet (lets you type the full query without focus jumping) */
+  const [jsonFindIndex, setJsonFindIndex] = useState(-1);
+  const jsonTextareaRef = useRef(null);
+  const jsonFindInputRef = useRef(null);
+
+  const jsonFindStarts = useMemo(() => findMatchStarts(json, jsonFind), [json, jsonFind]);
+  const jsonFindCount = jsonFindStarts.length;
+
+  const saveJsonConfig = useCallback(async () => {
+    try {
+      const parsed = JSON.parse(json);
+      const saved = await api.saveConfig(stripEphemeralKeys(parsed));
+      setCfg(saved);
+      setJson(JSON.stringify(stripEphemeralKeys(saved), null, 2));
+      const ba = saved.auth?.builtinAdmin || {};
+      setBuiltinEmail(ba.email || 'admin@hoverboard.builtin');
+      setBuiltinUsername(ba.username || 'admin');
+      setBuiltinPassword('');
+      alert('Saved to hoverboard.config.json on the server.');
+    } catch (e) {
+      alert(`Invalid JSON: ${e.message}`);
+    }
+  }, [json]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        saveJsonConfig();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [saveJsonConfig]);
 
   useEffect(() => {
     api
@@ -124,41 +205,127 @@ export default function Settings() {
 
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Live config (JSON)</div>
+        <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginTop: 0, marginBottom: '0.65rem' }}>
+          Type your search in the find bar first; the JSON area only scrolls when you use <strong>Next</strong>,{' '}
+          <strong>Prev</strong>, or <strong>Enter</strong> (so focus stays in the find field while you type). Browser{' '}
+          <kbd>Cmd+F</kbd> / <kbd>Ctrl+F</kbd> may not work in Cursor’s embedded preview — use the find bar or a normal
+          browser tab. <kbd>Cmd+S</kbd> / <kbd>Ctrl+S</kbd> saves this JSON to the server (same as Save).
+        </p>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            alignItems: 'center',
+            marginBottom: '0.65rem',
+          }}
+        >
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flex: '1 1 180px' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>Find in JSON</span>
+            <input
+              ref={jsonFindInputRef}
+              className="field-input"
+              type="search"
+              value={jsonFind}
+              placeholder="Search…"
+              onChange={(e) => {
+                const v = e.target.value;
+                setJsonFind(v);
+                setJsonFindIndex(-1);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (!jsonFindCount || !jsonFind) return;
+                  const ta = jsonTextareaRef.current;
+                  if (!ta) return;
+                  const nextIdx = e.shiftKey
+                    ? jsonFindIndex < 0
+                      ? jsonFindCount - 1
+                      : (jsonFindIndex - 1 + jsonFindCount) % jsonFindCount
+                    : jsonFindIndex < 0
+                      ? 0
+                      : (jsonFindIndex + 1) % jsonFindCount;
+                  setJsonFindIndex(nextIdx);
+                  focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFind.length);
+                }
+                if (e.key === 'Escape') {
+                  setJsonFind('');
+                  setJsonFindIndex(-1);
+                  jsonTextareaRef.current?.focus();
+                }
+              }}
+              style={{ flex: 1, minWidth: 120 }}
+            />
+          </label>
+          <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+            {jsonFind
+              ? jsonFindCount
+                ? jsonFindIndex < 0
+                  ? `${jsonFindCount} match${jsonFindCount === 1 ? '' : 'es'} — use Next or Enter`
+                  : `${jsonFindIndex + 1} / ${jsonFindCount}`
+                : '0 matches'
+              : ''}
+          </span>
+          <button
+            type="button"
+            className="btn-ghost"
+            style={{ fontSize: '0.82rem', padding: '0.25rem 0.55rem' }}
+            disabled={!jsonFindCount}
+            onClick={() => {
+              const nextIdx =
+                jsonFindIndex < 0 ? jsonFindCount - 1 : (jsonFindIndex - 1 + jsonFindCount) % jsonFindCount;
+              setJsonFindIndex(nextIdx);
+              const ta = jsonTextareaRef.current;
+              if (ta && jsonFind) focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFind.length);
+            }}
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            className="btn-ghost"
+            style={{ fontSize: '0.82rem', padding: '0.25rem 0.55rem' }}
+            disabled={!jsonFindCount}
+            onClick={() => {
+              const nextIdx = jsonFindIndex < 0 ? 0 : (jsonFindIndex + 1) % jsonFindCount;
+              setJsonFindIndex(nextIdx);
+              const ta = jsonTextareaRef.current;
+              if (ta && jsonFind) focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFind.length);
+            }}
+          >
+            Next
+          </button>
+        </div>
         <textarea
+          ref={jsonTextareaRef}
           value={json}
           onChange={(e) => setJson(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+              e.preventDefault();
+              jsonFindInputRef.current?.focus();
+              jsonFindInputRef.current?.select();
+            }
+          }}
           rows={16}
+          spellCheck={false}
           style={{
             width: '100%',
             fontFamily: 'var(--mono)',
             fontSize: '0.82rem',
+            lineHeight: 1.5,
             padding: '0.75rem',
             borderRadius: 10,
             border: '1px solid var(--border)',
             background: 'rgba(0,0,0,0.35)',
             color: 'var(--text)',
+            whiteSpace: 'pre',
+            overflow: 'auto',
+            tabSize: 2,
           }}
         />
-        <button
-          type="button"
-          className="btn-primary"
-          style={{ marginTop: '0.65rem' }}
-          onClick={async () => {
-            try {
-              const parsed = JSON.parse(json);
-              const saved = await api.saveConfig(stripEphemeralKeys(parsed));
-              setCfg(saved);
-              setJson(JSON.stringify(stripEphemeralKeys(saved), null, 2));
-              const ba = saved.auth?.builtinAdmin || {};
-              setBuiltinEmail(ba.email || 'admin@hoverboard.builtin');
-              setBuiltinUsername(ba.username || 'admin');
-              setBuiltinPassword('');
-              alert('Saved to hoverboard.config.json on the server.');
-            } catch (e) {
-              alert(`Invalid JSON: ${e.message}`);
-            }
-          }}
-        >
+        <button type="button" className="btn-primary" style={{ marginTop: '0.65rem' }} onClick={saveJsonConfig}>
           Save
         </button>
       </div>
@@ -173,6 +340,9 @@ export default function Settings() {
             <li>
               built-in admin: username={cfg.authUi?.builtinLoginUsername ?? cfg.auth?.builtinAdmin?.username ?? 'admin'} · email=
               {cfg.authUi?.builtinAdminEmail ?? cfg.auth?.builtinAdmin?.email ?? '—'}
+            </li>
+            <li>
+              iso26262Enabled: {String(cfg.iso26262Enabled === true)} — set <code>true</code> in JSON to enable ISO 26262 workspace, project Audit, and <code>/api/iso/*</code>
             </li>
           </ul>
         </div>
