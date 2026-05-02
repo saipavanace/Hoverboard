@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
+import { categoryOptionsFromConfig } from '../lib/requirementCategories.js';
 import PdfViewer from '../components/PdfViewer.jsx';
 
 const PERSIST_KEY = 'hoverboard.specs.activeSelection';
@@ -78,7 +79,7 @@ export default function Specs() {
 
   useEffect(() => {
     load(search);
-    api.config().then((cfg) => setCategories(cfg.requirementCategories || []));
+    api.config().then((cfg) => setCategories(categoryOptionsFromConfig(cfg)));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
   }, []);
 

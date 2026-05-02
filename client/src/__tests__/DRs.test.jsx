@@ -28,8 +28,8 @@ describe('DRs page', () => {
       </MemoryRouter>
     );
 
-    const categorySelect = await screen.findAllByDisplayValue('All');
-    fireEvent.change(categorySelect[0], { target: { value: 'CHI' } });
+    const categorySelect = await screen.findByRole('combobox', { name: 'Category' });
+    fireEvent.change(categorySelect, { target: { value: 'CHI' } });
 
     await waitFor(() => {
       expect(calls.some((u) => u.includes('category=CHI'))).toBe(true);

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { projectPath } from '../lib/paths.js';
 import { api } from '../api.js';
+import { buildCategoryTree, categoryOptionsFromConfig } from '../lib/requirementCategories.js';
+import CategoryCascadeFilter from '../components/CategoryCascadeFilter.jsx';
 import ArtifactThreads from '../components/ArtifactThreads.jsx';
 
 const STATUS_OPTIONS = ['draft', 'ready', 'in verification', 'blocked', 'done', 'closed'];
@@ -13,12 +15,15 @@ const KIND_OPTIONS = [
   { value: 'AR', label: 'AR — assertion requirement' },
 ];
 
+const FILTER_FIELD_STYLE = { display: 'flex', flexDirection: 'column', gap: '0.25rem', margin: 0 };
+
 export default function VRs() {
   const { projectId } = useParams();
   const [vrs, setVrs] = useState([]);
   const [deleteErr, setDeleteErr] = useState('');
   const [allDrs, setAllDrs] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categoryFilterRoots, setCategoryFilterRoots] = useState([]);
   const [filters, setFilters] = useState({
     q: '',
     kind: '',
@@ -51,8 +56,9 @@ export default function VRs() {
     Promise.all([api.drs(), api.config()])
       .then(([d, cfg]) => {
         setAllDrs(d);
-        const cats = cfg.requirementCategories || [];
+        const cats = categoryOptionsFromConfig(cfg);
         setCategories(cats);
+        setCategoryFilterRoots(buildCategoryTree(cfg.requirementCategories || []));
         setForm((f) => ({ ...f, category: f.category || cats[0] || '' }));
       })
       .catch(() => {});
@@ -141,9 +147,10 @@ export default function VRs() {
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: '0.65rem',
+            alignItems: 'start',
           }}
         >
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Type *</div>
             <select
               className="field-input"
@@ -157,7 +164,7 @@ export default function VRs() {
               ))}
             </select>
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Title *</div>
             <input
               className="field-input"
@@ -165,7 +172,7 @@ export default function VRs() {
               onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
           </label>
-          <label style={{ gridColumn: '1 / -1' }}>
+          <label style={{ ...FILTER_FIELD_STYLE, gridColumn: '1 / -1' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Description</div>
             <textarea
               className="field-input"
@@ -174,22 +181,19 @@ export default function VRs() {
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Category *</div>
-            <select
-              className="field-input"
+            <CategoryCascadeFilter
+              showHeaderLabel={false}
+              hideRootClear
+              roots={categoryFilterRoots}
               value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-            >
-              <option value="">Select…</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              onChange={(category) =>
+                setForm((prev) => ({ ...prev, category }))
+              }
+            />
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Labels (comma-separated)</div>
             <input
               className="field-input"
@@ -198,7 +202,7 @@ export default function VRs() {
               onChange={(e) => setForm({ ...form, labels: e.target.value })}
             />
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Status</div>
             <select
               className="field-input"
@@ -212,7 +216,7 @@ export default function VRs() {
               ))}
             </select>
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Priority</div>
             <select
               className="field-input"
@@ -369,10 +373,10 @@ export default function VRs() {
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
             gap: '0.65rem',
-            alignItems: 'end',
+            alignItems: 'start',
           }}
         >
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Search</div>
             <input
               className="field-input"
@@ -381,7 +385,7 @@ export default function VRs() {
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
             />
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Type</div>
             <select
               className="field-input"
@@ -396,22 +400,19 @@ export default function VRs() {
               ))}
             </select>
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Category</div>
-            <select
-              className="field-input"
+            <CategoryCascadeFilter
+              key={filters.category || 'category-filter-all'}
+              showHeaderLabel={false}
+              roots={categoryFilterRoots}
               value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            >
-              <option value="">All</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              onChange={(category) =>
+                setFilters((prev) => ({ ...prev, category }))
+              }
+            />
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Status</div>
             <select
               className="field-input"
@@ -426,7 +427,7 @@ export default function VRs() {
               ))}
             </select>
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Priority</div>
             <select
               className="field-input"

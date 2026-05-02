@@ -2,16 +2,20 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { projectPath } from '../lib/paths.js';
 import { api } from '../api.js';
+import { buildCategoryTree } from '../lib/requirementCategories.js';
+import CategoryCascadeFilter from '../components/CategoryCascadeFilter.jsx';
 import ArtifactThreads from '../components/ArtifactThreads.jsx';
 
 const STATUS_OPTIONS = ['open', 'review', 'closed'];
 const PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'];
 
+const FILTER_FIELD_STYLE = { display: 'flex', flexDirection: 'column', gap: '0.25rem', margin: 0 };
+
 export default function DRs() {
   const { projectId } = useParams();
   const [rows, setRows] = useState([]);
   const [deleteErr, setDeleteErr] = useState('');
-  const [categories, setCategories] = useState([]);
+  const [categoryRoots, setCategoryRoots] = useState([]);
   const [filters, setFilters] = useState({
     q: '',
     category: '',
@@ -21,7 +25,7 @@ export default function DRs() {
   const [selectedPublicId, setSelectedPublicId] = useState(null);
 
   useEffect(() => {
-    api.config().then((c) => setCategories(c.requirementCategories || []));
+    api.config().then((c) => setCategoryRoots(buildCategoryTree(c.requirementCategories || [])));
   }, []);
 
   useEffect(() => {
@@ -46,10 +50,10 @@ export default function DRs() {
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
             gap: '0.65rem',
-            alignItems: 'end',
+            alignItems: 'start',
           }}
         >
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Search</div>
             <input
               className="field-input"
@@ -58,22 +62,19 @@ export default function DRs() {
               onChange={(e) => setFilters({ ...filters, q: e.target.value })}
             />
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Category</div>
-            <select
-              className="field-input"
+            <CategoryCascadeFilter
+              key={filters.category || 'category-filter-all'}
+              showHeaderLabel={false}
+              roots={categoryRoots}
               value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            >
-              <option value="">All</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              onChange={(category) =>
+                setFilters((prev) => ({ ...prev, category }))
+              }
+            />
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Status</div>
             <select
               className="field-input"
@@ -88,7 +89,7 @@ export default function DRs() {
               ))}
             </select>
           </label>
-          <label>
+          <label style={FILTER_FIELD_STYLE}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Priority</div>
             <select
               className="field-input"

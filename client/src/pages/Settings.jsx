@@ -49,7 +49,7 @@ function focusSelectAndScroll(textarea, start, needleLen) {
 
 function stripEphemeralKeys(obj) {
   if (!obj || typeof obj !== 'object') return obj;
-  const { authUi, ...rest } = obj;
+  const { authUi, requirementCategoryValues, ...rest } = obj;
   return rest;
 }
 
@@ -209,7 +209,10 @@ export default function Settings() {
           Type your search in the find bar first; the JSON area only scrolls when you use <strong>Next</strong>,{' '}
           <strong>Prev</strong>, or <strong>Enter</strong> (so focus stays in the find field while you type). Browser{' '}
           <kbd>Cmd+F</kbd> / <kbd>Ctrl+F</kbd> may not work in Cursor’s embedded preview — use the find bar or a normal
-          browser tab. <kbd>Cmd+S</kbd> / <kbd>Ctrl+S</kbd> saves this JSON to the server (same as Save).
+          browser tab. <kbd>Cmd+S</kbd> / <kbd>Ctrl+S</kbd> saves this JSON to the server (same as Save). For{' '}
+          <code>requirementCategories</code>, you may use a nested tree: each entry is a string or{' '}
+          <code>{'{ "name": "Group", "children": ["A", { "name": "Sub", "children": ["B"] }] }'}</code>
+          — stored values are full paths like <code>Group / A</code> (see <code>docs/configuration.md</code>).
         </p>
         <div
           style={{

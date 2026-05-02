@@ -66,7 +66,7 @@ The **Settings** page under a project can update merged configuration via **`PUT
 
 ### Categories and metrics
 
-- **`requirementCategories`** — Allowed dropdown values for DR/VR **category**; invalid values are rejected by the API.
+- **`requirementCategories`** — Allowed DR/VR **category** values; may be a flat string list or a nested tree (see **`docs/configuration.md`**). Stored values use path strings such as `Group / Item`. Invalid values are rejected by the API.
 - **`releaseMetricWeights`** — How the dashboard combines pass rate, coverage, DR closure, etc.
 
 ### Branding

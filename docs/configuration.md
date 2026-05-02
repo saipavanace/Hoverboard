@@ -18,7 +18,7 @@ Environment overrides:
 | --- | --- | --- |
 | **`projectName`** | string | Display name in shell/header contexts |
 | **`companyName`** | string | Organization label for exports/reports |
-| **`requirementCategories`** | string[] | Allowed **category** values for DRs and VRs; API rejects unknown values |
+| **`requirementCategories`** | string[] **or** tree | Allowed **category** values for DRs and VRs. Legacy: flat strings. Nested: mix of strings and `{ "name": string, "children": [...] }`; API validates against **flattened paths** like `Parent / Child` (space–slash–space). **`GET /api/config`** also returns **`requirementCategoryValues`** (computed flat list; omit when editing JSON — not persisted). **`GET /api/drs`** and **`GET /api/vrs`** **`category`** query matches that **path or any deeper leaf** under it (branch filter). |
 | **`regressionRoots`** | string[] | Directories scanned for regression ingestion (**paths readable by API host**) |
 | **`releaseMetricWeights`** | object | Weights for combined readiness score (numeric; should sum ~1) |
 | **`branding`** | object | `accent` (hex color), `logoUrl` (optional string\|null) |
@@ -124,7 +124,10 @@ Password resolution order: **`HOVERBOARD_BUILTIN_ADMIN_PASSWORD`** env → **`au
 {
   "projectName": "Hoverboard",
   "companyName": "Example Motors",
-  "requirementCategories": ["System", "CHI", "DVE"],
+  "requirementCategories": [
+    "System",
+    { "name": "Interfaces", "children": ["UART", "PCIe"] }
+  ],
   "regressionRoots": ["./sample-regressions"],
   "releaseMetricWeights": {
     "passRate": 0.25,

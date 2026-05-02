@@ -2,14 +2,14 @@
   "projectName": "Hoverboard",
   "companyName": "Demo Org",
   "requirementCategories": [
-    "Category1",
-    "Category2",
-    "Category3",
-    "Category4",
-    "Category5",
-    "Category6",
-    "Category7",
-    "Category8"
+    { "name": "Category1", "children": ["Sub A", "Sub B"] },
+    { "name": "Category2", "children": ["Sub A", "Sub B"] },
+    { "name": "Category3", "children": ["Sub A", "Sub B"] },
+    { "name": "Category4", "children": ["Sub A", "Sub B"] },
+    { "name": "Category5", "children": ["Sub A", "Sub B"] },
+    { "name": "Category6", "children": ["Sub A", "Sub B"] },
+    { "name": "Category7", "children": ["Sub A", "Sub B"] },
+    { "name": "Category8", "children": ["Sub A", "Sub B"] }
   ],
   "regressionRoots": [
     "./sample-regressions"
@@ -79,18 +79,11 @@
       "issuerUrl": "",
       "clientId": "",
       "clientSecret": "",
-      "redirectUri": "http://localhost:5179/api/auth/callback",
-      "scopes": [
-        "openid",
-        "profile",
-        "email"
-      ],
+      "redirectUri": "",
+      "scopes": ["openid", "profile", "email"],
       "allowedDomains": [],
       "autoCreateUsers": true,
-      "groupsClaimPaths": [
-        "groups",
-        "roles"
-      ]
+      "groupsClaimPaths": ["groups", "realm_access.roles"]
     },
     "ldap": {
       "enabled": false,
@@ -98,8 +91,8 @@
       "bindDn": "",
       "bindPassword": "",
       "searchBase": "",
-      "userSearchFilter": "(|(sAMAccountName={{username}})(uid={{username}})(mail={{username}}))",
-      "userAttributeList": "mail,cn,department,title,memberOf",
+      "userSearchFilter": "(uid={{username}})",
+      "userAttributeList": "dn,uid,mail,cn",
       "emailAttribute": "mail",
       "displayNameAttribute": "cn",
       "departmentAttribute": "department",

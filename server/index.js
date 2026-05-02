@@ -40,6 +40,10 @@ import {
   projectIdFromDr,
   projectIdFromVr,
 } from './services/projectResolution.js';
+import {
+  flattenAllowedCategoryValues,
+  sqlCategoryBranchClause,
+} from './services/requirementCategories.js';
 
 function defaultProjectId() {
   const row = db.prepare(`SELECT id FROM projects WHERE slug = 'default'`).get();
@@ -68,7 +72,7 @@ function parseLabelsJson(s) {
 }
 
 function validateRequirementCategory(category, cfg) {
-  const allowed = cfg.requirementCategories || [];
+  const allowed = flattenAllowedCategoryValues(cfg.requirementCategories || []);
   if (!category || typeof category !== 'string') return 'category is required';
   const t = category.trim();
   if (!allowed.length) return null;
@@ -147,6 +151,7 @@ app.get('/api/config', (_req, res) => {
   const safe = sanitizeConfigForPublic(cfg);
   res.json({
     ...safe,
+    requirementCategoryValues: flattenAllowedCategoryValues(safe.requirementCategories || []),
     authUi: {
       authDisabled: authDisabled(),
       localLoginEnabled: cfg.auth?.localLoginEnabled !== false,
@@ -168,8 +173,10 @@ app.put(
       const { authUi: _authUi, ...rest } = body;
       const next = saveConfig(rest);
       ensureBuiltinAdmin();
+      const pub = sanitizeConfigForPublic(next);
       res.json({
-        ...sanitizeConfigForPublic(next),
+        ...pub,
+        requirementCategoryValues: flattenAllowedCategoryValues(pub.requirementCategories || []),
         authUi: {
           authDisabled: authDisabled(),
           localLoginEnabled: next.auth?.localLoginEnabled !== false,
@@ -646,8 +653,9 @@ app.get('/api/drs', requireListAccess('drs_read'), (req, res) => {
     params.push(...req.listProjectIds);
   }
   if (category) {
-    sql += ' AND drs.category = ?';
-    params.push(category);
+    const cat = sqlCategoryBranchClause('drs.category', category);
+    sql += cat.clause;
+    params.push(...cat.params);
   }
   if (status) {
     sql += ' AND drs.status = ?';
@@ -1028,8 +1036,9 @@ app.get('/api/vrs', requireListAccess('vrs_read'), (req, res) => {
     params.push(kindFilter);
   }
   if (category) {
-    sql += ' AND category = ?';
-    params.push(category);
+    const cat = sqlCategoryBranchClause('category', category);
+    sql += cat.clause;
+    params.push(...cat.params);
   }
   if (status) {
     sql += ' AND status = ?';
