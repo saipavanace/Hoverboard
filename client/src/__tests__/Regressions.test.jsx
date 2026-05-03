@@ -18,17 +18,17 @@ describe('Regressions page', () => {
     });
   });
 
-  it('disables ingest button until a path is entered', async () => {
+  it('disables bin failures until a server path or upload is provided', async () => {
     render(
       <MemoryRouter>
         <Regressions />
       </MemoryRouter>
     );
 
-    const btn = await screen.findByRole('button', { name: /ingest failures/i });
+    const btn = await screen.findByRole('button', { name: /^bin failures$/i });
     expect(btn).toBeDisabled();
 
-    const input = screen.getByPlaceholderText(/regression\//i);
+    const input = screen.getByRole('textbox', { name: /server regression directory path/i });
     fireEvent.change(input, { target: { value: '/tmp/x' } });
 
     await waitFor(() => expect(btn).not.toBeDisabled());

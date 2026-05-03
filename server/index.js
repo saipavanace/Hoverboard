@@ -15,9 +15,18 @@ import { binFailures } from './services/regressionBinning.js';
 import { computeReleaseReadiness } from './services/releaseProjection.js';
 import { loadConfig, saveConfig, sanitizeConfigForPublic } from './config.js';
 import { getBuiltinAdminEmail } from './services/builtinAdmin.js';
-import { scanRegressionDirectory } from './services/regressionAdapter.js';
-import { scanCoverageDirectory } from './services/coverageAdapter.js';
-import { scanDirectory as scanVrDirectory, extractTestNameFromLogPath } from './services/vrCoverage.js';
+import { scanRegressionDirectory, scanRegressionFromTexts } from './services/regressionAdapter.js';
+import { scanCoverageDirectory, scanCoverageFromTexts } from './services/coverageAdapter.js';
+import {
+  scanDirectory as scanVrDirectory,
+  scanRequirementLogsFromTexts,
+  extractTestNameFromLogPath,
+} from './services/vrCoverage.js';
+import {
+  collectLogEntriesFromUpload,
+  unlinkUploadTemps,
+  coverageUploadFilename,
+} from './services/logUploadEntries.js';
 import { normalizeVrKind, kindToIdParts } from './services/vrKind.js';
 import { syncLegacyArtifacts, versionVrArtifactFromRow } from './services/legacyArtifactSync.js';
 import { createArtifactWithFirstVersion } from './services/artifactStore.js';
@@ -138,8 +147,80 @@ app.use('/api', evidenceRoutes);
 app.use('/api', teamsRoutes);
 
 const upload = multer({ dest: uploadsDir });
+/** Log/ZIP batches for regression sync (larger limits than single-doc upload). */
+const regressionLogUpload = multer({
+  dest: uploadsDir,
+  limits: { fileSize: 52 * 1024 * 1024, files: 56 },
+});
 
 app.use('/uploads', express.static(uploadsDir));
+
+function persistRegressionBins(bins, activityAction, getReference) {
+  let inserted = 0;
+  const upsert = db.prepare(`
+    INSERT INTO regression_signatures (signature_key, title, category, class, state, total, trend_json)
+    VALUES (@signature_key, @title, 'regression', 'fail', 'OPEN', @total, @trend_json)
+    ON CONFLICT(signature_key) DO UPDATE SET
+      total = regression_signatures.total + excluded.total,
+      title = excluded.title
+  `);
+  for (const b of bins) {
+    upsert.run({
+      signature_key: b.signature_key,
+      title: b.title,
+      total: b.total,
+      trend_json: JSON.stringify([b.total]),
+    });
+    inserted++;
+    const sig = db
+      .prepare(`SELECT id FROM regression_signatures WHERE signature_key = ?`)
+      .get(b.signature_key);
+    db.prepare(
+      `INSERT INTO regression_activity (signature_id, action, reference, state) VALUES (?, ?, ?, ?)`
+    ).run(sig.id, activityAction, getReference(b), 'OPEN');
+  }
+  return inserted;
+}
+
+function recordVrCoverageScanResult(result, sourcePath, projectId) {
+  const findVr = db.prepare(`SELECT id FROM vrs WHERE public_id = ? AND project_id = ?`);
+  const upsert = db.prepare(`
+    INSERT INTO vr_coverage (vr_id, hits, source, last_seen_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(vr_id) DO UPDATE SET
+      hits = vr_coverage.hits + excluded.hits,
+      source = excluded.source,
+      last_seen_at = datetime('now')
+  `);
+  const upsertFile = db.prepare(`
+    INSERT INTO vr_coverage_files (vr_id, file_path, test_name)
+    VALUES (?, ?, ?)
+    ON CONFLICT(vr_id, file_path) DO UPDATE SET
+      test_name = excluded.test_name
+  `);
+  const matched = [];
+  const unmatched = [];
+  for (const [vrPid, n] of result.hits.entries()) {
+    const row = findVr.get(vrPid, projectId);
+    if (row) {
+      upsert.run(row.id, n, sourcePath);
+      matched.push({ vr_public_id: vrPid, hits: n });
+    } else {
+      unmatched.push({ vr_public_id: vrPid, hits: n });
+    }
+  }
+  for (const pf of result.perFileHits || []) {
+    const { testRaw, testNormalized } = extractTestNameFromLogPath(pf.path);
+    const testLabel = testNormalized || testRaw || null;
+    for (const [vrPid] of pf.hits.entries()) {
+      const row = findVr.get(vrPid, projectId);
+      if (row) {
+        upsertFile.run(row.id, pf.path, testLabel);
+      }
+    }
+  }
+  return { matched, unmatched };
+}
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'hoverboard-api' });
@@ -1240,29 +1321,7 @@ app.post(
       ? lines.map((l) => String(l))
       : [];
   const bins = binFailures(raw);
-  let inserted = 0;
-  const upsert = db.prepare(`
-    INSERT INTO regression_signatures (signature_key, title, category, class, state, total, trend_json)
-    VALUES (@signature_key, @title, 'regression', 'fail', 'OPEN', @total, @trend_json)
-    ON CONFLICT(signature_key) DO UPDATE SET
-      total = regression_signatures.total + excluded.total,
-      title = excluded.title
-  `);
-  for (const b of bins) {
-    upsert.run({
-      signature_key: b.signature_key,
-      title: b.title,
-      total: b.total,
-      trend_json: JSON.stringify([b.total]),
-    });
-    inserted++;
-    const sig = db
-      .prepare(`SELECT id FROM regression_signatures WHERE signature_key = ?`)
-      .get(b.signature_key);
-    db.prepare(
-      `INSERT INTO regression_activity (signature_id, action, reference, state) VALUES (?, ?, ?, ?)`
-    ).run(sig.id, 'ingest', b.sample, 'OPEN');
-  }
+  const inserted = persistRegressionBins(bins, 'ingest', (b) => b.sample);
   res.json({ signaturesUpserted: inserted, bins: bins.length });
   }
 );
@@ -1306,33 +1365,46 @@ app.post(
   }
   const cfg = loadConfig();
   const result = scanRegressionDirectory(dir, { patterns: cfg.regressionParsers });
-  let inserted = 0;
-  const upsert = db.prepare(`
-    INSERT INTO regression_signatures (signature_key, title, category, class, state, total, trend_json)
-    VALUES (@signature_key, @title, 'regression', 'fail', 'OPEN', @total, @trend_json)
-    ON CONFLICT(signature_key) DO UPDATE SET
-      total = regression_signatures.total + excluded.total,
-      title = excluded.title
-  `);
-  for (const b of result.bins) {
-    upsert.run({
-      signature_key: b.signature_key,
-      title: b.title,
-      total: b.total,
-      trend_json: JSON.stringify([b.total]),
-    });
-    inserted++;
-    const sig = db
-      .prepare(`SELECT id FROM regression_signatures WHERE signature_key = ?`)
-      .get(b.signature_key);
-    db.prepare(
-      `INSERT INTO regression_activity (signature_id, action, reference, state) VALUES (?, ?, ?, ?)`
-    ).run(sig.id, 'directory ingest', dir, 'OPEN');
-  }
+  const inserted = persistRegressionBins(result.bins, 'directory ingest', () => dir);
   db.prepare(
     `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('REGRESSION', ?, 'INGEST_DIR', ?)`
   ).run(dir, JSON.stringify({ filesScanned: result.filesScanned, failures: result.failures, bins: inserted }));
   res.json({ ok: true, ...result, signaturesUpserted: inserted });
+  }
+);
+
+/** Same as ingest-directory but from uploaded log/text/out files and optional zip */
+app.post(
+  '/api/regressions/ingest-upload',
+  requireProjectPermission('regressions_write', resolveWithDefaultProject),
+  regressionLogUpload.fields([
+    { name: 'logs', maxCount: 50 },
+    { name: 'zip', maxCount: 1 },
+  ]),
+  (req, res) => {
+    const logFiles = req.files?.logs || [];
+    const zipFiles = req.files?.zip || [];
+    const { entries, tempPaths } = collectLogEntriesFromUpload({ logFiles, zipFiles });
+    try {
+      if (!entries.length) {
+        return res.status(400).json({ error: 'Add .log/.txt/.out files or a zip containing them.' });
+      }
+      const cfg = loadConfig();
+      const result = scanRegressionFromTexts(
+        entries.map((e) => ({ label: e.path, text: e.text })),
+        { patterns: cfg.regressionParsers, sourceLabel: 'upload' }
+      );
+      const inserted = persistRegressionBins(result.bins, 'upload ingest', () => 'upload');
+      db.prepare(
+        `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('REGRESSION', ?, 'INGEST_UPLOAD', ?)`
+      ).run(
+        'upload',
+        JSON.stringify({ filesScanned: result.filesScanned, failures: result.failures, bins: inserted })
+      );
+      res.json({ ok: true, ...result, signaturesUpserted: inserted });
+    } finally {
+      unlinkUploadTemps(tempPaths);
+    }
   }
 );
 
@@ -1354,6 +1426,44 @@ app.post(
   if (result.functional != null) insert.run('functional', result.functional, dir, req.body?.runId || null);
   if (result.code != null) insert.run('code', result.code, dir, req.body?.runId || null);
   res.json({ ok: true, ...result });
+  }
+);
+
+/** Functional + code coverage from uploaded reports (same parsing as directory ingest) */
+app.post(
+  '/api/coverage/ingest-upload',
+  requireProjectPermission('regressions_write', resolveWithDefaultProject),
+  regressionLogUpload.fields([
+    { name: 'logs', maxCount: 50 },
+    { name: 'zip', maxCount: 1 },
+  ]),
+  (req, res) => {
+    const logFiles = req.files?.logs || [];
+    const zipFiles = req.files?.zip || [];
+    const { entries, tempPaths } = collectLogEntriesFromUpload(
+      { logFiles, zipFiles },
+      { acceptFilename: coverageUploadFilename }
+    );
+    try {
+      if (!entries.length) {
+        return res.status(400).json({ error: 'Add coverage report files or a zip containing them.' });
+      }
+      const cfg = loadConfig();
+      const runId = String(req.body?.runId || '').trim() || null;
+      const result = scanCoverageFromTexts(
+        entries.map((e) => ({ label: e.path, text: e.text })),
+        { regex: cfg.coverageRegex, sourceLabel: 'upload' }
+      );
+      const insert = db.prepare(
+        `INSERT INTO coverage_metrics (kind, value, source, run_id) VALUES (?, ?, ?, ?)`
+      );
+      const src = 'upload';
+      if (result.functional != null) insert.run('functional', result.functional, src, runId);
+      if (result.code != null) insert.run('code', result.code, src, runId);
+      res.json({ ok: true, ...result });
+    } finally {
+      unlinkUploadTemps(tempPaths);
+    }
   }
 );
 
@@ -1390,47 +1500,50 @@ app.post(
   const cfg = loadConfig();
   const strict = req.body?.strictUvmInfo !== false;
   const result = scanVrDirectory(dir, { regex: cfg.vrLogRegex, strictUvmInfo: strict });
-
-  const findVr = db.prepare(`SELECT id FROM vrs WHERE public_id = ? AND project_id = ?`);
-  const upsert = db.prepare(`
-    INSERT INTO vr_coverage (vr_id, hits, source, last_seen_at)
-    VALUES (?, ?, ?, datetime('now'))
-    ON CONFLICT(vr_id) DO UPDATE SET
-      hits = vr_coverage.hits + excluded.hits,
-      source = excluded.source,
-      last_seen_at = datetime('now')
-  `);
-  const upsertFile = db.prepare(`
-    INSERT INTO vr_coverage_files (vr_id, file_path, test_name)
-    VALUES (?, ?, ?)
-    ON CONFLICT(vr_id, file_path) DO UPDATE SET
-      test_name = excluded.test_name
-  `);
-  const matched = [];
-  const unmatched = [];
-  for (const [vrPid, n] of result.hits.entries()) {
-    const row = findVr.get(vrPid, pid);
-    if (row) {
-      upsert.run(row.id, n, dir);
-      matched.push({ vr_public_id: vrPid, hits: n });
-    } else {
-      unmatched.push({ vr_public_id: vrPid, hits: n });
-    }
-  }
-  for (const pf of result.perFileHits || []) {
-    const { testRaw, testNormalized } = extractTestNameFromLogPath(pf.path);
-    const testLabel = testNormalized || testRaw || null;
-    for (const [vrPid] of pf.hits.entries()) {
-      const row = findVr.get(vrPid, pid);
-      if (row) {
-        upsertFile.run(row.id, pf.path, testLabel);
-      }
-    }
-  }
+  const { matched, unmatched } = recordVrCoverageScanResult(result, dir, pid);
   db.prepare(
     `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('VR_COVERAGE', ?, 'SCAN', ?)`
   ).run(dir, JSON.stringify({ matchedCount: matched.length, unmatchedCount: unmatched.length, files: result.files }));
   res.json({ ok: true, files: result.files, matched, unmatched });
+  }
+);
+
+/** Same as scan-directory but from uploaded logs / zip */
+app.post(
+  '/api/vr-coverage/scan-upload',
+  requireProjectPermission('regressions_write', resolveWithDefaultProject),
+  regressionLogUpload.fields([
+    { name: 'logs', maxCount: 50 },
+    { name: 'zip', maxCount: 1 },
+  ]),
+  (req, res) => {
+    const logFiles = req.files?.logs || [];
+    const zipFiles = req.files?.zip || [];
+    const { entries, tempPaths } = collectLogEntriesFromUpload({ logFiles, zipFiles });
+    try {
+      if (!entries.length) {
+        return res.status(400).json({ error: 'Add log/text/out files or a zip containing them.' });
+      }
+      const pid = req.resolvedProjectId;
+      const cfg = loadConfig();
+      const sRaw = req.body?.strictUvmInfo;
+      const strict = !(sRaw === false || sRaw === 'false' || sRaw === '0' || sRaw === 0);
+      const result = scanRequirementLogsFromTexts(entries, {
+        regex: cfg.vrLogRegex,
+        strictUvmInfo: strict,
+        sourceLabel: 'upload',
+      });
+      const { matched, unmatched } = recordVrCoverageScanResult(result, 'upload', pid);
+      db.prepare(
+        `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('VR_COVERAGE', ?, 'SCAN', ?)`
+      ).run(
+        'upload',
+        JSON.stringify({ matchedCount: matched.length, unmatchedCount: unmatched.length, files: result.files })
+      );
+      res.json({ ok: true, files: result.files, matched, unmatched });
+    } finally {
+      unlinkUploadTemps(tempPaths);
+    }
   }
 );
 

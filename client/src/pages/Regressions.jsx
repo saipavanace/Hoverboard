@@ -1,11 +1,25 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 
+function buildRegressionForm(files, zipFile, extra = {}) {
+  const fd = new FormData();
+  for (const f of files) fd.append('logs', f);
+  if (zipFile) fd.append('zip', zipFile);
+  if (extra.runId != null && String(extra.runId).trim() !== '') fd.append('runId', String(extra.runId).trim());
+  return fd;
+}
+
 export default function Regressions() {
+  const [logFiles, setLogFiles] = useState([]);
+  const [zipFile, setZipFile] = useState(null);
   const [path, setPath] = useState('');
+  const [runId, setRunId] = useState('');
   const [busy, setBusy] = useState(null);
   const [results, setResults] = useState({});
-  const [strict, setStrict] = useState(true);
+
+  const hasUpload = logFiles.length > 0 || zipFile != null;
+  const pathOk = path.trim().length > 0;
+  const canRun = hasUpload || pathOk;
 
   async function run(label, fn) {
     setBusy(label);
@@ -23,64 +37,106 @@ export default function Regressions() {
     <>
       <h1 className="page-title">Regression sync</h1>
       <p className="page-lede">
-        Point Hoverboard at a regression directory <strong>visible to the API host</strong> (mounted
-        scratch, NFS, sync target). For remote scratch you don&apos;t mount on this Mac, run a small
-        sync agent that downloads or rsyncs into a local path and call these endpoints from CI.
+        Upload logs or a zip for local processing, or point at a directory <strong>on the API server</strong> (CI /
+        mounted scratch).
       </p>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <label>
-          <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
-            Regression directory (absolute or relative to the API server)
-          </div>
+        <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Log files</div>
           <input
+            type="file"
+            multiple
+            accept=".log,.txt,.out,.json,.report"
             className="field-input"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="/scratch/.../regression/2026_04_30_094117"
-            style={{ fontFamily: 'var(--mono)' }}
+            onChange={(e) => setLogFiles(Array.from(e.target.files || []))}
           />
         </label>
-        <label
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginTop: '0.65rem',
-            fontSize: '0.85rem',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={strict}
-            onChange={(e) => setStrict(e.target.checked)}
-          />
-          VR scan: only count VR IDs inside <code>UVM_INFO/UVM_NOTE</code> lines
-        </label>
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.85rem' }}>
+        {logFiles.length > 0 && (
+          <div style={{ fontSize: '0.82rem', color: 'var(--muted)', marginBottom: '0.45rem' }}>
+            {logFiles.length} file{logFiles.length === 1 ? '' : 's'} selected
+          </div>
+        )}
+
+        <details style={{ marginBottom: '0.65rem' }}>
+          <summary style={{ cursor: 'pointer', fontSize: '0.88rem', color: 'var(--muted)' }}>
+            Advanced (server path, zip, run id)
+          </summary>
+          <label style={{ display: 'block', marginTop: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Optional zip of logs / reports</div>
+            <input
+              type="file"
+              accept=".zip"
+              className="field-input"
+              onChange={(e) => setZipFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          <label style={{ display: 'block', marginTop: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+              Path visible to the API (absolute or relative to server cwd)
+            </div>
+            <input
+              aria-label="Server regression directory path"
+              className="field-input"
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              style={{ fontFamily: 'var(--mono)' }}
+            />
+          </label>
+          <label style={{ display: 'block', marginTop: '0.45rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Coverage run id (optional)</div>
+            <input
+              className="field-input"
+              value={runId}
+              onChange={(e) => setRunId(e.target.value)}
+              placeholder="e.g. nightly-042"
+              style={{ fontFamily: 'var(--mono)' }}
+            />
+          </label>
+        </details>
+
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.65rem' }}>
           <button
             type="button"
             className="btn-primary"
-            disabled={!path || busy === 'reg'}
-            onClick={() => run('reg', () => api.ingestRegressionDir(path))}
+            disabled={!canRun || busy === 'reg'}
+            onClick={() =>
+              run('reg', () =>
+                hasUpload
+                  ? api.ingestRegressionUpload(buildRegressionForm(logFiles, zipFile))
+                  : api.ingestRegressionDir(path.trim())
+              )
+            }
           >
-            {busy === 'reg' ? 'Scanning…' : 'Ingest failures (binning)'}
+            {busy === 'reg' ? 'Working…' : 'Bin failures'}
           </button>
           <button
             type="button"
             className="btn-ghost"
-            disabled={!path || busy === 'cov'}
-            onClick={() => run('cov', () => api.ingestCoverageDir(path))}
+            disabled={!canRun || busy === 'cov'}
+            onClick={() =>
+              run('cov', () =>
+                hasUpload
+                  ? api.ingestCoverageUpload(buildRegressionForm(logFiles, zipFile, { runId }))
+                  : api.ingestCoverageDir(path.trim(), runId.trim() || undefined)
+              )
+            }
           >
-            {busy === 'cov' ? 'Scanning…' : 'Ingest coverage (functional + code)'}
+            {busy === 'cov' ? 'Working…' : 'Record coverage'}
           </button>
           <button
             type="button"
             className="btn-ghost"
-            disabled={!path || busy === 'vr'}
-            onClick={() => run('vr', () => api.scanVrCoverageDir(path, strict))}
+            disabled={!canRun || busy === 'vr'}
+            onClick={() =>
+              run('vr', () =>
+                hasUpload
+                  ? api.scanRequirementLogsUpload(buildRegressionForm(logFiles, zipFile))
+                  : api.scanVrCoverageDir(path.trim())
+              )
+            }
           >
-            {busy === 'vr' ? 'Scanning…' : 'Scan VR coverage from logs'}
+            {busy === 'vr' ? 'Working…' : 'Scan logs'}
           </button>
         </div>
       </div>
@@ -88,11 +144,7 @@ export default function Regressions() {
       {Object.entries(results).map(([k, v]) => (
         <div key={k} className="card" style={{ marginBottom: '1rem' }}>
           <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>
-            {k === 'reg'
-              ? 'Failure binning'
-              : k === 'cov'
-                ? 'Coverage extraction'
-                : 'VR coverage scan'}
+            {k === 'reg' ? 'Failure binning' : k === 'cov' ? 'Coverage' : 'Requirement IDs in logs'}
           </div>
           {v.ok ? (
             <pre
@@ -115,21 +167,10 @@ export default function Regressions() {
         </div>
       ))}
 
-      <div className="card">
-        <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>How parsers / regex are configured</div>
-        <ul style={{ margin: 0, paddingLeft: '1.1rem', color: 'var(--muted)', fontSize: '0.92rem' }}>
-          <li>
-            <code>regressionParsers</code> — per-line failure regexes (defaults: FAIL, ERROR, ASSERT, timeout, UVM_FATAL).
-          </li>
-          <li>
-            <code>coverageRegex.functional</code> / <code>coverageRegex.code</code> — patterns extracting percentages from text reports; JSON files with <code>functional_coverage</code> / <code>code_coverage</code> keys are auto-detected.
-          </li>
-          <li>
-            <code>vrLogRegex</code> — must capture the VR ID in group 1; default scopes to <code>UVM_INFO</code> / <code>UVM_NOTE</code>.
-          </li>
-          <li>See <code>docs/configuration.md</code> for full key reference.</li>
-        </ul>
-      </div>
+      <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--muted)' }}>
+        Regex keys: <code>regressionParsers</code>, <code>coverageRegex</code>, <code>vrLogRegex</code>. See{' '}
+        <code>docs/configuration.md</code>.
+      </p>
     </>
   );
 }

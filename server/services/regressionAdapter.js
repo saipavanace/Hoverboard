@@ -43,36 +43,56 @@ export function scanLogText(text, patterns, opts = {}) {
   return failures;
 }
 
-export function scanRegressionDirectory(rootDir, opts = {}) {
+export function readLogFileSlice(filePath, maxBytes = 5 * 1024 * 1024) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > maxBytes) {
+      const fd = fs.openSync(filePath, 'r');
+      const buf = Buffer.alloc(maxBytes);
+      fs.readSync(fd, buf, 0, maxBytes, 0);
+      fs.closeSync(fd);
+      return buf.toString('utf8');
+    }
+    return fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * @param {Array<{ label: string, text: string }>} entries — log contents + display labels (paths or archive paths).
+ */
+export function scanRegressionFromTexts(entries, opts = {}) {
   const patterns = compilePatterns(opts.patterns);
+  const failures = [];
+  const filesScanned = [];
+  const maxLinesPerFile = opts.maxLinesPerFile ?? 4000;
+  for (const { label, text } of entries) {
+    filesScanned.push(label);
+    failures.push(...scanLogText(text, patterns, { maxLines: maxLinesPerFile }));
+  }
+  const bins = binFailures(failures);
+  const sourceLabel = opts.sourceLabel ?? 'upload';
+  return {
+    rootDir: sourceLabel,
+    filesScanned: filesScanned.length,
+    failures: failures.length,
+    bins,
+  };
+}
+
+export function scanRegressionDirectory(rootDir, opts = {}) {
   const filePatterns = opts.filePatterns?.length ? opts.filePatterns : DEFAULT_FILE_PATTERNS;
   const maxFiles = opts.maxFiles ?? 800;
   const maxBytes = opts.maxBytes ?? 5 * 1024 * 1024;
-  const failures = [];
-  const filesScanned = [];
+  const entries = [];
   walk(rootDir, 0, opts.maxDepth ?? 8, filePatterns, (filePath) => {
-    if (filesScanned.length >= maxFiles) return;
-    let text = '';
-    try {
-      const stat = fs.statSync(filePath);
-      if (stat.size > maxBytes) {
-        const fd = fs.openSync(filePath, 'r');
-        const buf = Buffer.alloc(maxBytes);
-        fs.readSync(fd, buf, 0, maxBytes, 0);
-        fs.closeSync(fd);
-        text = buf.toString('utf8');
-      } else {
-        text = fs.readFileSync(filePath, 'utf8');
-      }
-    } catch {
-      return;
-    }
-    filesScanned.push(filePath);
-    const found = scanLogText(text, patterns, { maxLines: opts.maxLinesPerFile ?? 4000 });
-    failures.push(...found);
+    if (entries.length >= maxFiles) return;
+    const text = readLogFileSlice(filePath, maxBytes);
+    if (!text) return;
+    entries.push({ label: filePath, text });
   });
-  const bins = binFailures(failures);
-  return { rootDir, filesScanned: filesScanned.length, failures: failures.length, bins };
+  return scanRegressionFromTexts(entries, { ...opts, sourceLabel: rootDir });
 }
 
 function walk(dir, depth, maxDepth, filePatterns, onFile) {

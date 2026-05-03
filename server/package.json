@@ -8,6 +8,7 @@
     "test": "vitest run --config vitest.config.js"
   },
   "dependencies": {
+    "adm-zip": "^0.5.17",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "diff": "^7.0.0",

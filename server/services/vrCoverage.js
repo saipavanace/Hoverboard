@@ -104,26 +104,42 @@ export function scanContents(text, opts = {}) {
   return found;
 }
 
-export function scanDirectory(rootDir, opts = {}) {
-  const filePatterns = opts.filePatterns?.length ? opts.filePatterns : DEFAULT_FILES;
+/**
+ * @param {Array<{ path: string, text: string }>} entries
+ */
+export function scanRequirementLogsFromTexts(entries, opts = {}) {
   const merged = new Map();
   const perFileHits = [];
-  walk(rootDir, 0, opts.maxDepth ?? 8, filePatterns, (filePath) => {
-    let text = '';
-    try {
-      const stat = fs.statSync(filePath);
-      if (stat.size > (opts.maxBytes ?? 8 * 1024 * 1024)) return;
-      text = fs.readFileSync(filePath, 'utf8');
-    } catch {
-      return;
+  const maxB = opts.maxBytes ?? 8 * 1024 * 1024;
+  for (const { path: filePath, text: rawText } of entries) {
+    let text = String(rawText ?? '');
+    if (Buffer.byteLength(text, 'utf8') > maxB) {
+      text = Buffer.from(text, 'utf8').subarray(0, maxB).toString('utf8');
     }
     const found = scanContents(text, opts);
     perFileHits.push({ path: filePath, hits: found });
     for (const [id, n] of found.entries()) {
       merged.set(id, (merged.get(id) || 0) + n);
     }
+  }
+  const label = opts.sourceLabel ?? 'upload';
+  return { rootDir: label, files: perFileHits.length, hits: merged, perFileHits };
+}
+
+export function scanDirectory(rootDir, opts = {}) {
+  const filePatterns = opts.filePatterns?.length ? opts.filePatterns : DEFAULT_FILES;
+  const entries = [];
+  walk(rootDir, 0, opts.maxDepth ?? 8, filePatterns, (filePath) => {
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.size > (opts.maxBytes ?? 8 * 1024 * 1024)) return;
+      const text = fs.readFileSync(filePath, 'utf8');
+      entries.push({ path: filePath, text });
+    } catch {
+      /* skip */
+    }
   });
-  return { rootDir, files: perFileHits.length, hits: merged, perFileHits };
+  return scanRequirementLogsFromTexts(entries, { ...opts, sourceLabel: rootDir });
 }
 
 function walk(dir, depth, maxDepth, filePatterns, onFile) {

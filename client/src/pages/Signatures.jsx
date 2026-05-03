@@ -6,7 +6,6 @@ import { api } from '../api.js';
 export default function Signatures() {
   const { projectId } = useParams();
   const [rows, setRows] = useState([]);
-  const [scan, setScan] = useState(null);
 
   async function refresh() {
     const data = await api.signatures();
@@ -20,58 +19,6 @@ export default function Signatures() {
   return (
     <>
       <h1 className="page-title">Signature trends</h1>
-      <p className="page-lede">
-        Automatic regression binning clusters raw failures into signatures with IDs, trends, and
-        triage metadata — upgrade path to full Simscope-style workflows.
-      </p>
-
-      <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={async () => {
-            await api.demoSeed();
-            refresh();
-          }}
-        >
-          Load demo signatures
-        </button>
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={async () => {
-            await api.ingestRegressions({
-              lines: [
-                'FAIL: uart_timeout waiting for TX empty',
-                'ERROR sim: assertion failed at tb_pcie.sv:120',
-              ],
-            });
-            refresh();
-          }}
-        >
-          Ingest sample lines
-        </button>
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={async () => {
-            const r = await api.scanRegressionPaths();
-            setScan(r);
-            alert(
-              `Scanned roots; collected ${r.linesCollected} failure lines (preview ${r.previewBins?.length || 0} bins).`
-            );
-          }}
-        >
-          Scan regression paths
-        </button>
-      </div>
-
-      {scan && (
-        <div className="card" style={{ marginBottom: '1rem', fontSize: '0.88rem' }}>
-          <strong>Last scan:</strong> {scan.linesCollected} lines from configured roots. See{' '}
-          <code>hoverboard.config.json</code> → <code>regressionRoots</code>.
-        </div>
-      )}
 
       <div className="table-wrap">
         <table>
@@ -110,9 +57,7 @@ export default function Signatures() {
         </table>
       </div>
       {!rows.length && (
-        <p style={{ color: 'var(--muted)' }}>
-          No signatures yet — seed demo data or ingest regression logs.
-        </p>
+        <p style={{ color: 'var(--muted)' }}>No signatures yet.</p>
       )}
     </>
   );

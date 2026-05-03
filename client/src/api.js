@@ -87,16 +87,23 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
+  /** Multipart: append files as `logs`, optional `zip`; same binning as ingest-directory */
+  ingestRegressionUpload: (formData) =>
+    json('/api/regressions/ingest-upload', { method: 'POST', body: formData }),
   ingestCoverageDir: (path, runId) =>
     json('/api/coverage/ingest-directory', {
       method: 'POST',
       body: JSON.stringify({ path, runId }),
     }),
+  ingestCoverageUpload: (formData) =>
+    json('/api/coverage/ingest-upload', { method: 'POST', body: formData }),
   scanVrCoverageDir: (path, strictUvmInfo = true) =>
     json('/api/vr-coverage/scan-directory', {
       method: 'POST',
       body: JSON.stringify({ path, strictUvmInfo }),
     }),
+  scanRequirementLogsUpload: (formData) =>
+    json('/api/vr-coverage/scan-upload', { method: 'POST', body: formData }),
   coverageSummary: () => json('/api/coverage/summary'),
   vrCoverage: () => json('/api/vr-coverage'),
   drCoverage: () => json('/api/dr-coverage'),

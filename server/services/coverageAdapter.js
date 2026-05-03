@@ -83,10 +83,30 @@ export function parseContent(text, regexMap) {
   return result;
 }
 
-export function scanCoverageDirectory(rootDir, opts = {}) {
-  const filePatterns = opts.filePatterns?.length ? opts.filePatterns : DEFAULT_FILES;
+/**
+ * @param {Array<{ label: string, text: string }>} entries
+ */
+export function scanCoverageFromTexts(entries, opts = {}) {
   const regexMap = opts.regex || DEFAULT_REGEX;
   const matches = [];
+  const maxB = opts.maxBytes ?? 2 * 1024 * 1024;
+  for (const { label: filePath, text: rawText } of entries) {
+    let text = String(rawText ?? '');
+    if (Buffer.byteLength(text, 'utf8') > maxB) {
+      text = Buffer.from(text, 'utf8').subarray(0, maxB).toString('utf8');
+    }
+    const v = parseContent(text, regexMap);
+    if (v.functional != null || v.code != null) matches.push({ filePath, ...v });
+  }
+  const functional = pickAverage(matches, 'functional');
+  const code = pickAverage(matches, 'code');
+  const src = opts.sourceLabel ?? 'upload';
+  return { rootDir: src, files: matches.length, functional, code, matches };
+}
+
+export function scanCoverageDirectory(rootDir, opts = {}) {
+  const filePatterns = opts.filePatterns?.length ? opts.filePatterns : DEFAULT_FILES;
+  const entries = [];
   walk(rootDir, 0, opts.maxDepth ?? 8, filePatterns, (filePath) => {
     let text = '';
     try {
@@ -96,12 +116,9 @@ export function scanCoverageDirectory(rootDir, opts = {}) {
     } catch {
       return;
     }
-    const v = parseContent(text, regexMap);
-    if (v.functional != null || v.code != null) matches.push({ filePath, ...v });
+    entries.push({ label: filePath, text });
   });
-  const functional = pickAverage(matches, 'functional');
-  const code = pickAverage(matches, 'code');
-  return { rootDir, files: matches.length, functional, code, matches };
+  return scanCoverageFromTexts(entries, { ...opts, sourceLabel: rootDir });
 }
 
 function clamp(n) {
