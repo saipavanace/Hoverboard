@@ -1,18 +1,42 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useProject } from '../context/ProjectContext.jsx';
 
-function findMatchStarts(haystack, needle) {
+function findMatchStarts(haystack, needle, caseSensitive) {
   if (!needle) return [];
+  const h = caseSensitive ? haystack : haystack.toLowerCase();
+  const n = caseSensitive ? needle : needle.toLowerCase();
   const out = [];
   let i = 0;
-  while (i <= haystack.length - needle.length) {
-    const j = haystack.indexOf(needle, i);
+  while (i <= h.length - n.length) {
+    const j = h.indexOf(n, i);
     if (j === -1) break;
     out.push(j);
     i = j + 1;
   }
   return out;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** HTML mirror for find highlights while the search field keeps focus (native ::selection is faint when unfocused). */
+function buildJsonFindMirrorHtml(jsonStr, matchStart, matchLen) {
+  if (matchStart < 0 || matchLen <= 0 || matchStart + matchLen > jsonStr.length) {
+    return escapeHtml(jsonStr);
+  }
+  return (
+    escapeHtml(jsonStr.slice(0, matchStart)) +
+    '<mark class="settings-json-find-mark">' +
+    escapeHtml(jsonStr.slice(matchStart, matchStart + matchLen)) +
+    '</mark>' +
+    escapeHtml(jsonStr.slice(matchStart + matchLen))
+  );
 }
 
 /** Scroll textarea vertically so the line containing `charIndex` is in view; browser handles horizontal for selections. */
@@ -36,15 +60,18 @@ function scrollTextareaToCharIndex(textarea, charIndex) {
   textarea.scrollTop = Math.max(0, lineTop - viewH * 0.35);
 }
 
-function focusSelectAndScroll(textarea, start, needleLen) {
+function focusSelectAndScroll(textarea, start, needleLen, options = {}) {
+  const { focusEditor = true, onAfterScroll } = options;
   const end = start + needleLen;
-  textarea.focus();
+  if (focusEditor) textarea.focus({ preventScroll: true });
   textarea.setSelectionRange(start, end);
   scrollTextareaToCharIndex(textarea, start);
+  onAfterScroll?.();
   requestAnimationFrame(() => {
     textarea.setSelectionRange(start, end);
     scrollTextareaToCharIndex(textarea, start);
-    textarea.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (focusEditor) textarea.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    onAfterScroll?.();
   });
 }
 
@@ -108,13 +135,65 @@ export default function Settings() {
   const [testTo, setTestTo] = useState('');
   const [testBusy, setTestBusy] = useState(false);
   const [jsonFind, setJsonFind] = useState('');
-  /** -1 = no match navigated yet (lets you type the full query without focus jumping) */
+  /** When false (default), search is case-insensitive. */
+  const [jsonFindCaseSensitive, setJsonFindCaseSensitive] = useState(false);
+  /** Current match index when cycling with Next / Prev / Enter (live-find resets to first match). */
   const [jsonFindIndex, setJsonFindIndex] = useState(-1);
   const jsonTextareaRef = useRef(null);
+  const jsonHighlightPreRef = useRef(null);
   const jsonFindInputRef = useRef(null);
 
-  const jsonFindStarts = useMemo(() => findMatchStarts(json, jsonFind), [json, jsonFind]);
+  const jsonFindNeedle = useMemo(() => jsonFind.trim(), [jsonFind]);
+  const jsonFindStarts = useMemo(
+    () =>
+      jsonFindNeedle ? findMatchStarts(json, jsonFindNeedle, jsonFindCaseSensitive) : [],
+    [json, jsonFindNeedle, jsonFindCaseSensitive]
+  );
   const jsonFindCount = jsonFindStarts.length;
+
+  const jsonFindHighlightHtml = useMemo(() => {
+    if (!jsonFindNeedle || !jsonFindStarts.length) {
+      return escapeHtml(json);
+    }
+    const idx =
+      jsonFindIndex >= 0 && jsonFindIndex < jsonFindStarts.length ? jsonFindIndex : 0;
+    const start = jsonFindStarts[idx];
+    return buildJsonFindMirrorHtml(json, start, jsonFindNeedle.length);
+  }, [json, jsonFindNeedle, jsonFindStarts, jsonFindIndex]);
+
+  const syncJsonHighlightScroll = useCallback(() => {
+    const ta = jsonTextareaRef.current;
+    const pre = jsonHighlightPreRef.current;
+    if (!ta || !pre) return;
+    pre.scrollTop = ta.scrollTop;
+    pre.scrollLeft = ta.scrollLeft;
+  }, []);
+
+  useLayoutEffect(() => {
+    syncJsonHighlightScroll();
+  }, [json, jsonFindNeedle, jsonFindCaseSensitive, jsonFindIndex, jsonFindHighlightHtml, syncJsonHighlightScroll]);
+
+  /**
+   * Live-find: scroll to the first match and set selection without focusing the textarea.
+   * Highlight visibility comes from the mirrored <pre> layer, not ::selection.
+   */
+  useEffect(() => {
+    const ta = jsonTextareaRef.current;
+    if (!jsonFindNeedle || !ta) {
+      if (!jsonFindNeedle) setJsonFindIndex(-1);
+      return;
+    }
+    if (!jsonFindStarts.length) {
+      setJsonFindIndex(-1);
+      return;
+    }
+    setJsonFindIndex(0);
+    const start = jsonFindStarts[0];
+    focusSelectAndScroll(ta, start, jsonFindNeedle.length, {
+      focusEditor: false,
+      onAfterScroll: syncJsonHighlightScroll,
+    });
+  }, [jsonFindNeedle, jsonFindStarts, syncJsonHighlightScroll]);
 
   const saveJsonConfig = useCallback(async () => {
     try {
@@ -437,6 +516,29 @@ export default function Settings() {
       )}
 
       <div className="card" style={{ marginBottom: '1rem' }}>
+        <style>{`
+          .settings-json-find-highlight-layer {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+          .settings-json-find-highlight-layer::-webkit-scrollbar {
+            display: none;
+          }
+          .settings-json-find-highlight-layer .settings-json-find-mark {
+            background: rgba(45, 212, 191, 0.55);
+            color: #f8fafc;
+            border-radius: 2px;
+            padding: 0 1px;
+          }
+          textarea.settings-json-find-target::selection {
+            background: rgba(45, 212, 191, 0.55) !important;
+            color: #f8fafc !important;
+          }
+          textarea.settings-json-find-target::-moz-selection {
+            background: rgba(45, 212, 191, 0.55) !important;
+            color: #f8fafc !important;
+          }
+        `}</style>
         <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Live config (JSON)</div>
         <div
           style={{
@@ -458,12 +560,12 @@ export default function Settings() {
               onChange={(e) => {
                 const v = e.target.value;
                 setJsonFind(v);
-                setJsonFindIndex(-1);
+                if (!v.trim()) setJsonFindIndex(-1);
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  if (!jsonFindCount || !jsonFind) return;
+                  if (!jsonFindCount || !jsonFindNeedle) return;
                   const ta = jsonTextareaRef.current;
                   if (!ta) return;
                   const nextIdx = e.shiftKey
@@ -474,7 +576,10 @@ export default function Settings() {
                       ? 0
                       : (jsonFindIndex + 1) % jsonFindCount;
                   setJsonFindIndex(nextIdx);
-                  focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFind.length);
+                  focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFindNeedle.length, {
+                    focusEditor: true,
+                    onAfterScroll: syncJsonHighlightScroll,
+                  });
                 }
                 if (e.key === 'Escape') {
                   setJsonFind('');
@@ -485,15 +590,37 @@ export default function Settings() {
               style={{ flex: 1, minWidth: 120 }}
             />
           </label>
-          <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
-            {jsonFind
-              ? jsonFindCount
-                ? jsonFindIndex < 0
-                  ? `${jsonFindCount} match${jsonFindCount === 1 ? '' : 'es'} — use Next or Enter`
-                  : `${jsonFindIndex + 1} / ${jsonFindCount}`
-                : '0 matches'
+          <span
+            style={{
+              fontSize: '0.78rem',
+              color: jsonFindNeedle && jsonFindCount === 0 ? 'var(--danger, #f87171)' : 'var(--muted)',
+            }}
+          >
+            {jsonFindNeedle
+              ? jsonFindCount === 0
+                ? 'Not found'
+                : `${(jsonFindIndex >= 0 ? jsonFindIndex : 0) + 1} / ${jsonFindCount}`
               : ''}
           </span>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              fontSize: '0.78rem',
+              color: 'var(--muted)',
+              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={jsonFindCaseSensitive}
+              onChange={(e) => setJsonFindCaseSensitive(e.target.checked)}
+            />
+            Match case
+          </label>
           <button
             type="button"
             className="btn-ghost"
@@ -504,7 +631,11 @@ export default function Settings() {
                 jsonFindIndex < 0 ? jsonFindCount - 1 : (jsonFindIndex - 1 + jsonFindCount) % jsonFindCount;
               setJsonFindIndex(nextIdx);
               const ta = jsonTextareaRef.current;
-              if (ta && jsonFind) focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFind.length);
+              if (ta && jsonFindNeedle)
+                focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFindNeedle.length, {
+                  focusEditor: true,
+                  onAfterScroll: syncJsonHighlightScroll,
+                });
             }}
           >
             Prev
@@ -518,67 +649,98 @@ export default function Settings() {
               const nextIdx = jsonFindIndex < 0 ? 0 : (jsonFindIndex + 1) % jsonFindCount;
               setJsonFindIndex(nextIdx);
               const ta = jsonTextareaRef.current;
-              if (ta && jsonFind) focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFind.length);
+              if (ta && jsonFindNeedle)
+                focusSelectAndScroll(ta, jsonFindStarts[nextIdx], jsonFindNeedle.length, {
+                  focusEditor: true,
+                  onAfterScroll: syncJsonHighlightScroll,
+                });
             }}
           >
             Next
           </button>
         </div>
-        <textarea
-          ref={jsonTextareaRef}
-          value={json}
-          onChange={(e) => setJson(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
-              e.preventDefault();
-              jsonFindInputRef.current?.focus();
-              jsonFindInputRef.current?.select();
-            }
-          }}
-          rows={16}
-          spellCheck={false}
+        <div
           style={{
+            position: 'relative',
             width: '100%',
-            fontFamily: 'var(--mono)',
-            fontSize: '0.82rem',
-            lineHeight: 1.5,
-            padding: '0.75rem',
             borderRadius: 10,
             border: '1px solid var(--border)',
             background: 'rgba(0,0,0,0.35)',
-            color: 'var(--text)',
-            whiteSpace: 'pre',
-            overflow: 'auto',
-            tabSize: 2,
           }}
-        />
+        >
+          <pre
+            ref={jsonHighlightPreRef}
+            className="settings-json-find-highlight-layer"
+            // eslint-disable-next-line react/no-danger -- escaped JSON + single <mark> for find
+            dangerouslySetInnerHTML={{ __html: jsonFindHighlightHtml }}
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              margin: 0,
+              overflow: 'auto',
+              fontFamily: 'var(--mono)',
+              fontSize: '0.82rem',
+              lineHeight: 1.5,
+              padding: '0.75rem',
+              whiteSpace: 'pre',
+              tabSize: 2,
+              color: 'var(--text)',
+              pointerEvents: 'none',
+            }}
+          />
+          <textarea
+            ref={jsonTextareaRef}
+            className="settings-json-find-target"
+            value={json}
+            onChange={(e) => setJson(e.target.value)}
+            onScroll={(e) => {
+              const ta = e.target;
+              const pre = jsonHighlightPreRef.current;
+              if (pre) {
+                pre.scrollTop = ta.scrollTop;
+                pre.scrollLeft = ta.scrollLeft;
+              }
+            }}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                jsonFindInputRef.current?.focus();
+                jsonFindInputRef.current?.select();
+              }
+            }}
+            rows={16}
+            spellCheck={false}
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              display: 'block',
+              width: '100%',
+              boxSizing: 'border-box',
+              fontFamily: 'var(--mono)',
+              fontSize: '0.82rem',
+              lineHeight: 1.5,
+              padding: '0.75rem',
+              margin: 0,
+              border: 'none',
+              borderRadius: 10,
+              background: 'transparent',
+              color: 'transparent',
+              caretColor: 'var(--text)',
+              whiteSpace: 'pre',
+              overflow: 'auto',
+              tabSize: 2,
+              resize: 'vertical',
+            }}
+          />
+        </div>
         <button type="button" className="btn-primary" style={{ marginTop: '0.65rem' }} onClick={saveJsonConfig}>
           Save
         </button>
       </div>
-
-      {cfg && (
-        <div className="card">
-          <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Quick view</div>
-          <ul style={{ margin: 0, paddingLeft: '1.1rem', color: 'var(--muted)', fontSize: '0.92rem' }}>
-            <li>projectName: {cfg.projectName}</li>
-            <li>companyName: {cfg.companyName}</li>
-            <li>regressionRoots: {(cfg.regressionRoots || []).join(', ') || '—'}</li>
-            <li>
-              built-in admin: username={cfg.authUi?.builtinLoginUsername ?? cfg.auth?.builtinAdmin?.username ?? 'admin'} · email=
-              {cfg.authUi?.builtinAdminEmail ?? cfg.auth?.builtinAdmin?.email ?? '—'}
-            </li>
-            <li>
-              iso26262Enabled: {String(cfg.iso26262Enabled === true)} — set <code>true</code> in JSON to enable ISO 26262 workspace, project Audit, and <code>/api/iso/*</code>
-            </li>
-            <li>
-              notifications: {String(cfg.notifications?.enabled === true)} · SMTP host:{' '}
-              {cfg.notifications?.smtp?.host || '—'} · pass:{' '}
-              {cfg.notifications?.smtp?.passConfigured ? 'configured' : 'not set'}
-            </li>
-          </ul>
-        </div>
-      )}
     </>
   );
 }
