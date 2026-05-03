@@ -166,11 +166,6 @@ export default function Regressions() {
           )}
         </div>
       ))}
-
-      <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--muted)' }}>
-        Regex keys: <code>regressionParsers</code>, <code>coverageRegex</code>, <code>vrLogRegex</code>. See{' '}
-        <code>docs/configuration.md</code>.
-      </p>
     </>
   );
 }

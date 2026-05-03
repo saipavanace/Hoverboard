@@ -46,10 +46,6 @@ export default function Dashboard() {
   return (
     <>
       <h1 className="page-title">Status dashboard</h1>
-      <p className="page-lede">
-        Program health at a glance: coverage mix, regression posture, signature load, and adaptive
-        release readiness — inspired by verification ops dashboards, tuned for clarity.
-      </p>
 
       {err && (
         <div className="card" style={{ borderColor: 'rgba(249,115,115,0.4)', marginBottom: '1rem' }}>
@@ -91,11 +87,6 @@ export default function Dashboard() {
         <div className="dashboard-req-head">
           <div>
             <h2 className="dashboard-req-title">Verification requirement coverage</h2>
-            <p className="dashboard-req-desc">
-              Closure from regression log scans by requirement type. Each kind uses its own ID sequence (
-              <span style={{ fontFamily: 'var(--mono)', fontSize: '0.84em' }}>VR‑*, SR‑*, CR‑*, AR‑*</span>
-              ). The overall figure blends every linked item in this project.
-            </p>
           </div>
           <div className="dashboard-req-overall">
             <span className="kpi-label">Overall</span>
@@ -207,9 +198,6 @@ export default function Dashboard() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <div>
             <div style={{ fontWeight: 700 }}>Release readiness</div>
-            <div style={{ color: 'var(--muted)', fontSize: '0.88rem' }}>
-              Single management score + adaptive date with confidence (early phase stays TBD).
-            </div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Projected date</div>

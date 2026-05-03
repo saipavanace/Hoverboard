@@ -174,20 +174,10 @@ export default function Settings() {
   return (
     <>
       <h1 className="page-title">Configuration</h1>
-      <p className="page-lede">
-        Project-independent controls: branding, regression roots, auth, release metric weights. Full key reference lives in{' '}
-        <code>docs/configuration.md</code>.
-      </p>
 
       {cfg && (
         <div className="card" style={{ marginBottom: '1rem' }}>
-          <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Email notifications</div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
-            Configure SMTP and who receives mail when specs are updated, DRs go stale after a spec change, or VRs become
-            stale because a sole linked DR was deleted. Per-project routing uses{' '}
-            <strong>subscription.projectId</strong> — use the JSON editor below for rules scoped to one workspace; this
-            form saves <strong>global</strong> recipients (all projects).
-          </p>
+          <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Email notifications</div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem' }}>
             <input type="checkbox" checked={notifEnabled} onChange={(e) => setNotifEnabled(e.target.checked)} />
             <span style={{ fontSize: '0.9rem' }}>Enable event-driven notifications</span>
@@ -368,13 +358,7 @@ export default function Settings() {
 
       {cfg && (
         <div className="card" style={{ marginBottom: '1rem' }}>
-          <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Built-in administrator (local login)</div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.75rem' }}>
-            Maps to the reserved database account used for break-glass login. Set <strong>login username</strong> (what you type
-            at the login screen) and <strong>email</strong> (stored user identity). The numeric <strong>user id</strong> in the
-            database is assigned automatically and cannot be changed. Prefer{' '}
-            <code>HOVERBOARD_BUILTIN_ADMIN_PASSWORD</code> in production instead of storing a password in this file.
-          </p>
+          <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Built-in administrator (local login)</div>
           <div
             style={{
               display: 'grid',
@@ -453,16 +437,7 @@ export default function Settings() {
       )}
 
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Live config (JSON)</div>
-        <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginTop: 0, marginBottom: '0.65rem' }}>
-          Type your search in the find bar first; the JSON area only scrolls when you use <strong>Next</strong>,{' '}
-          <strong>Prev</strong>, or <strong>Enter</strong> (so focus stays in the find field while you type). Browser{' '}
-          <kbd>Cmd+F</kbd> / <kbd>Ctrl+F</kbd> may not work in Cursor’s embedded preview — use the find bar or a normal
-          browser tab. <kbd>Cmd+S</kbd> / <kbd>Ctrl+S</kbd> saves this JSON to the server (same as Save). For{' '}
-          <code>requirementCategories</code>, you may use a nested tree: each entry is a string or{' '}
-          <code>{'{ "name": "Group", "children": ["A", { "name": "Sub", "children": ["B"] }] }'}</code>
-          — stored values are full paths like <code>Group / A</code> (see <code>docs/configuration.md</code>).
-        </p>
+        <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Live config (JSON)</div>
         <div
           style={{
             display: 'flex',

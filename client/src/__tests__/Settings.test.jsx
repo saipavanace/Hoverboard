@@ -44,9 +44,6 @@ describe('Settings', () => {
     );
 
     expect(await screen.findByRole('heading', { name: /configuration/i })).toBeTruthy();
-    expect(
-      screen.getByText(/Project-independent controls/i)
-    ).toBeTruthy();
     expect(await screen.findByDisplayValue(/"projectName"/)).toBeTruthy();
   });
 });

@@ -38,10 +38,6 @@ export default function DRs() {
   return (
     <>
       <h1 className="page-title">Design requirements</h1>
-      <p className="page-lede">
-        DRs are categorized and labeled for filtering. Search matches ID, excerpt, labels, or
-        category text.
-      </p>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Filters</div>

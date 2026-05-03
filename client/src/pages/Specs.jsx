@@ -180,10 +180,6 @@ export default function Specs() {
   return (
     <>
       <h1 className="page-title">Specifications</h1>
-      <p className="page-lede">
-        Upload PDF or Word into folders. The viewer is hidden by default — click <strong>View
-        spec</strong> to load it. Select text in the viewer to capture a DR with full metadata.
-      </p>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>New specification</div>

@@ -131,14 +131,6 @@ export default function VRs() {
   return (
     <>
       <h1 className="page-title">Verification requirements</h1>
-      <p className="page-lede">
-        Create items with IDs <code>VR-…</code>, <code>SR-…</code>, <code>CR-…</code>, or <code>AR-…</code>{' '}
-        (stimulus, coverage, and assertion requirements share this workflow). Each item must link to at least one{' '}
-        <strong>existing</strong> DR — pick from the typeahead (unknown IDs cannot be saved).{' '}
-        <strong>Coverage</strong> is computed from regression log scans matching those IDs (
-        <code>VR_…</code> / <code>SR_…</code> etc.); run <strong>Regressions → VR log scan</strong> with a directory the
-        API can read.
-      </p>
 
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Create verification requirement</div>
@@ -359,11 +351,6 @@ export default function VRs() {
         >
           Save requirement
         </button>
-        {!canSave && (
-          <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginTop: '0.5rem' }}>
-            Title, category, and at least one linked DR are required.
-          </p>
-        )}
       </div>
 
       <div className="card" style={{ marginBottom: '1rem' }}>

@@ -33,9 +33,6 @@ describe('VRs page', () => {
 
     const saveBtn = await screen.findByRole('button', { name: /save requirement/i });
     expect(saveBtn).toBeDisabled();
-    expect(
-      screen.getByText(/title, category, and at least one linked dr are required/i)
-    ).toBeTruthy();
   });
 
   it('shows "Not found" when typing an unknown DR ID and pressing Enter', async () => {
