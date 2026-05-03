@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { projectPath } from '../lib/paths.js';
+import ToolVersionBadge from '../components/ToolVersionBadge.jsx';
 
 export default function ISO() {
   const navigate = useNavigate();
@@ -9,6 +10,8 @@ export default function ISO() {
   const [audit, setAudit] = useState([]);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvError, setCsvError] = useState('');
+  const [toolVersion, setToolVersion] = useState(null);
+  const [toolVersionMeta, setToolVersionMeta] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -16,6 +19,8 @@ export default function ISO() {
       .config()
       .then((c) => {
         if (cancelled) return;
+        setToolVersion(c.toolVersion ?? null);
+        setToolVersionMeta(c.toolVersionMeta ?? null);
         if (c.iso26262Enabled !== true) {
           navigate(projectPath(Number(projectId), 'dashboard'), { replace: true });
           return;
@@ -60,6 +65,12 @@ export default function ISO() {
   return (
     <>
       <h1 className="page-title">ISO 26262 workspace</h1>
+      {toolVersion && (
+        <p style={{ margin: '0 0 0.65rem', fontSize: '0.88rem', color: 'var(--muted)' }}>
+          Tool release for qualification records:{' '}
+          <ToolVersionBadge toolVersion={toolVersion} toolVersionMeta={toolVersionMeta} variant="footer" />
+        </p>
+      )}
       <p className="page-lede">
         Traceability exports, ASIL tagging hooks on DR/VR, verification review placeholders, audit
         trail, and audit-ready bundles — structured for serious compliance workflows.

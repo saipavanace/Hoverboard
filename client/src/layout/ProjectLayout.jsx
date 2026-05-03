@@ -5,6 +5,7 @@ import { useTheme } from '../theme/ThemeContext.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useProject } from '../context/ProjectContext.jsx';
 import { projectPath } from '../lib/paths.js';
+import ToolVersionBadge from '../components/ToolVersionBadge.jsx';
 
 function sbClass({ isActive }) {
   return `proj-sb-link${isActive ? ' proj-sb-link-active' : ''}`;
@@ -162,6 +163,7 @@ export default function ProjectLayout() {
             <h1>Hoverboard</h1>
           </Link>
           <span>{current?.name || cfg?.projectName || 'Project'}</span>
+          <ToolVersionBadge toolVersion={cfg?.toolVersion} toolVersionMeta={cfg?.toolVersionMeta} />
         </div>
         <div className="proj-tools">
           <Link

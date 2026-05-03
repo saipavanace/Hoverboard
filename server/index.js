@@ -27,6 +27,7 @@ import {
   unlinkUploadTemps,
   coverageUploadFilename,
 } from './services/logUploadEntries.js';
+import { getToolVersionMeta } from './services/toolVersion.js';
 import { normalizeVrKind, kindToIdParts } from './services/vrKind.js';
 import { syncLegacyArtifacts, versionVrArtifactFromRow } from './services/legacyArtifactSync.js';
 import { createArtifactWithFirstVersion } from './services/artifactStore.js';
@@ -223,7 +224,19 @@ function recordVrCoverageScanResult(result, sourcePath, projectId) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'hoverboard-api' });
+  const meta = getToolVersionMeta();
+  res.json({
+    ok: true,
+    service: 'hoverboard-api',
+    version: meta.version,
+    versionMeta: {
+      phase: meta.phase,
+      major: meta.major,
+      minor: meta.minor,
+      patch: meta.patch,
+      prerelease: meta.prerelease,
+    },
+  });
 });
 
 app.get('/api/config', (_req, res) => {
@@ -233,8 +246,17 @@ app.get('/api/config', (_req, res) => {
     oidc.issuerUrl && oidc.clientId && oidc.clientSecret && oidc.redirectUri
   );
   const safe = sanitizeConfigForPublic(cfg);
+  const toolVer = getToolVersionMeta();
   res.json({
     ...safe,
+    toolVersion: toolVer.version,
+    toolVersionMeta: {
+      phase: toolVer.phase,
+      major: toolVer.major,
+      minor: toolVer.minor,
+      patch: toolVer.patch,
+      prerelease: toolVer.prerelease,
+    },
     requirementCategoryValues: flattenAllowedCategoryValues(safe.requirementCategories || []),
     authUi: {
       authDisabled: authDisabled(),
@@ -258,8 +280,17 @@ app.put(
       const next = saveConfig(rest);
       ensureBuiltinAdmin();
       const pub = sanitizeConfigForPublic(next);
+      const tv = getToolVersionMeta();
       res.json({
         ...pub,
+        toolVersion: tv.version,
+        toolVersionMeta: {
+          phase: tv.phase,
+          major: tv.major,
+          minor: tv.minor,
+          patch: tv.patch,
+          prerelease: tv.prerelease,
+        },
         requirementCategoryValues: flattenAllowedCategoryValues(pub.requirementCategories || []),
         authUi: {
           authDisabled: authDisabled(),

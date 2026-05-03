@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link, Navigate, useLocation } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import ToolVersionBadge from '../components/ToolVersionBadge.jsx';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -240,6 +241,20 @@ export default function Login() {
             </Link>
           </div>
         </div>
+        {cfg?.toolVersion && (
+          <div
+            style={{
+              marginTop: '1.25rem',
+              textAlign: 'center',
+            }}
+          >
+            <ToolVersionBadge
+              variant="login"
+              toolVersion={cfg.toolVersion}
+              toolVersionMeta={cfg.toolVersionMeta}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

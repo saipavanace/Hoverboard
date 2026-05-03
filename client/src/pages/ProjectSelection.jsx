@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useProject } from '../context/ProjectContext.jsx';
 import { projectPath } from '../lib/paths.js';
+import ToolVersionBadge from '../components/ToolVersionBadge.jsx';
 
 export default function ProjectSelection() {
   const { user, loading: authLoading } = useAuth();
@@ -134,6 +135,22 @@ export default function ProjectSelection() {
           >
             Refresh list
           </button>
+        </div>
+      )}
+
+      {cfg?.toolVersion && (
+        <div
+          style={{
+            marginTop: '2rem',
+            paddingTop: '1rem',
+            borderTop: '1px solid var(--border)',
+          }}
+        >
+          <ToolVersionBadge
+            variant="footer"
+            toolVersion={cfg.toolVersion}
+            toolVersionMeta={cfg.toolVersionMeta}
+          />
         </div>
       )}
     </>
