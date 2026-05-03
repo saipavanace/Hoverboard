@@ -27,6 +27,8 @@ export function markStaleForNewVersion(db, specId, newExtractedText) {
   `);
 
   let marked = 0;
+  /** @type {string[]} */
+  const drPublicIds = [];
   for (const dr of drs) {
     const ex = normalizeForMatch(dr.excerpt);
     const stillThere = ex.length > 0 && normNew.includes(ex);
@@ -38,10 +40,11 @@ export function markStaleForNewVersion(db, specId, newExtractedText) {
       );
       linkVr.run(dr.id);
       marked++;
+      drPublicIds.push(dr.public_id);
       db.prepare(
         `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('DR', ?, 'STALE', ?)`
       ).run(dr.public_id, 'Marked stale after spec upload');
     }
   }
-  return { marked };
+  return { marked, drPublicIds };
 }

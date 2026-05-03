@@ -56,6 +56,22 @@ const defaults = {
    * When true, enable /api/iso/* and show the ISO 26262 workspace + project Audit nav. Default false (opt-in).
    */
   iso26262Enabled: false,
+  /**
+   * Email notifications (optional). Requires SMTP + subscriptions per event.
+   * Secrets: smtp.pass may be omitted when HOVERBOARD_SMTP_PASS is set.
+   */
+  notifications: {
+    enabled: false,
+    smtp: {
+      host: '',
+      port: 587,
+      secure: false,
+      user: '',
+      pass: '',
+      from: { name: 'Hoverboard', address: '' },
+    },
+    subscriptions: [],
+  },
   auth: {
     /** When false, users must sign in. Set HOVERBOARD_AUTH_DISABLED=true for local dev without login. */
     disabled: false,
@@ -139,6 +155,17 @@ export function loadConfig() {
       ...(file.releaseMetricWeights || {}),
     },
     branding: { ...defaults.branding, ...(file.branding || {}) },
+    notifications: {
+      ...defaults.notifications,
+      ...(file.notifications || {}),
+      smtp: {
+        ...defaults.notifications.smtp,
+        ...(file.notifications?.smtp || {}),
+      },
+      subscriptions: Array.isArray(file.notifications?.subscriptions)
+        ? file.notifications.subscriptions
+        : defaults.notifications.subscriptions,
+    },
     auth: {
       ...defaults.auth,
       ...(file.auth || {}),
@@ -170,7 +197,40 @@ export function sanitizeConfigForPublic(cfg) {
     out.auth.builtinAdmin = { ...out.auth.builtinAdmin };
     delete out.auth.builtinAdmin.password;
   }
+  if (out.notifications?.smtp) {
+    out.notifications = { ...out.notifications };
+    out.notifications.smtp = { ...out.notifications.smtp };
+    const hadPass = Boolean(out.notifications.smtp.pass);
+    delete out.notifications.smtp.pass;
+    out.notifications.smtp.passConfigured = hadPass || Boolean(process.env.HOVERBOARD_SMTP_PASS);
+  }
   return out;
+}
+
+function mergeNotificationsForSave(raw, current, partial) {
+  if (partial.notifications === undefined) {
+    return current.notifications ?? { ...defaults.notifications };
+  }
+  const smtpIn = partial.notifications.smtp;
+  const pass =
+    smtpIn?.pass != null && String(smtpIn.pass).trim() !== ''
+      ? String(smtpIn.pass)
+      : raw.notifications?.smtp?.pass ?? current.notifications?.smtp?.pass ?? '';
+  return {
+    ...defaults.notifications,
+    ...current.notifications,
+    ...partial.notifications,
+    smtp: {
+      ...defaults.notifications.smtp,
+      ...current.notifications?.smtp,
+      ...partial.notifications?.smtp,
+      pass,
+    },
+    subscriptions:
+      partial.notifications.subscriptions !== undefined
+        ? partial.notifications.subscriptions
+        : current.notifications?.subscriptions ?? defaults.notifications.subscriptions,
+  };
 }
 
 function mergeBuiltinAdminForSave(raw, current, partial) {
@@ -199,6 +259,7 @@ export function saveConfig(partial) {
       ...(partial.releaseMetricWeights || {}),
     },
     branding: { ...current.branding, ...(partial.branding || {}) },
+    notifications: mergeNotificationsForSave(raw, current, partial),
     auth: partial.auth
       ? {
           ...current.auth,

@@ -45,6 +45,8 @@ export const api = {
   health: () => json('/api/health'),
   config: () => json('/api/config'),
   saveConfig: (body) => json('/api/config', { method: 'PUT', body: JSON.stringify(body) }),
+  testNotificationEmail: (to) =>
+    json('/api/notifications/test-email', { method: 'POST', body: JSON.stringify({ to }) }),
   specs: (params) => json(`/api/specs${qsp(params)}`),
   createSpec: (body) => json('/api/specs', { method: 'POST', body: JSON.stringify(body) }),
   deleteSpec: (id) => json(`/api/specs/${id}`, { method: 'DELETE' }),

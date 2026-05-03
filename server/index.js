@@ -28,6 +28,8 @@ import {
   coverageUploadFilename,
 } from './services/logUploadEntries.js';
 import { getToolVersionMeta } from './services/toolVersion.js';
+import { sendMail } from './services/emailSend.js';
+import { scheduleNotification, NOTIFICATION_EVENTS } from './services/notifications.js';
 import { normalizeVrKind, kindToIdParts } from './services/vrKind.js';
 import { syncLegacyArtifacts, versionVrArtifactFromRow } from './services/legacyArtifactSync.js';
 import { createArtifactWithFirstVersion } from './services/artifactStore.js';
@@ -269,6 +271,25 @@ app.get('/api/config', (_req, res) => {
     },
   });
 });
+
+/** Send a single test message (settings_write). Requires SMTP + notifications.enabled optional — actually test should work if smtp configured for debugging */
+app.post(
+  '/api/notifications/test-email',
+  requireProjectPermission('settings_write', resolveWithDefaultProject),
+  async (req, res) => {
+    const to = String(req.body?.to || '').trim();
+    if (!to) return res.status(400).json({ error: 'to (email address) required' });
+    const cfg = loadConfig();
+    const r = await sendMail(cfg, {
+      to,
+      subject: '[Hoverboard] Test notification',
+      text:
+        'This is a test email from Hoverboard.\n\nIf you received it, SMTP settings are usable. Event-driven notifications still require notifications.enabled and subscriptions in configuration.',
+    });
+    if (!r.ok) return res.status(500).json({ error: r.error || 'send failed' });
+    res.json({ ok: true });
+  }
+);
 
 app.put(
   '/api/config',
@@ -543,6 +564,32 @@ app.post(
     `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('SPEC_VERSION', ?, 'UPLOAD', ?)`
   ).run(String(vr.id), JSON.stringify({ changelog: changelog.summary, staleMarked: staleResult.marked }));
 
+  const projId = spec.project_id ?? null;
+  const appOrigin = loadConfig().auth?.publicAppUrl || '';
+  scheduleNotification(NOTIFICATION_EVENTS.SPEC_VERSION_PUBLISHED, projId, {
+    subject: `[Hoverboard] Spec version published: ${spec.name} (${version})`,
+    text: [
+      `Specification: ${spec.name} (${spec.identifier})`,
+      `New version label: ${version}`,
+      projId != null ? `Project ID: ${projId}` : '',
+      changelog.summary ? `Changelog summary: ${changelog.summary}` : '',
+      appOrigin ? `App URL: ${appOrigin}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  });
+  if (staleResult.marked > 0) {
+    scheduleNotification(NOTIFICATION_EVENTS.DR_STALE_AFTER_SPEC, projId, {
+      subject: `[Hoverboard] ${staleResult.marked} DR(s) marked stale (${spec.name})`,
+      text: [
+        `After publishing version ${version} of ${spec.name}, these DR public IDs were marked stale (excerpt no longer found in spec text):`,
+        staleResult.drPublicIds?.length
+          ? staleResult.drPublicIds.join(', ')
+          : '(see audit trail)',
+      ].join('\n'),
+    });
+  }
+
   res.status(201).json({
     id: vr.id,
     version,
@@ -810,6 +857,20 @@ app.delete(
     const mode = String(req.query.orphan_vrs || 'stale').toLowerCase();
     const deleteOrphans = mode === 'delete';
 
+    /** Public IDs of VRs marked stale because sole linked DR is deleted (notification payload). */
+    const staleVrPublicIds = [];
+    const drProjectRow = db
+      .prepare(
+        `
+      SELECT s.project_id AS project_id FROM drs d
+      JOIN spec_versions sv ON d.spec_version_id = sv.id
+      JOIN specs s ON sv.spec_id = s.id
+      WHERE d.id = ?
+    `
+      )
+      .get(dr.id);
+    const deleteNotifyProjectId = drProjectRow?.project_id ?? null;
+
     const tx = db.transaction(() => {
       db.prepare(`DELETE FROM iso_evidence WHERE dr_id = ?`).run(dr.id);
 
@@ -836,6 +897,7 @@ app.delete(
           db.prepare(
             `UPDATE vrs SET stale = 1, stale_reason = ?, updated_at = datetime('now') WHERE id = ?`
           ).run(`Sole linked DR ${dr.public_id} was deleted`, vr_id);
+          if (vrRow.public_id) staleVrPublicIds.push(vrRow.public_id);
         }
       }
 
@@ -872,6 +934,17 @@ app.delete(
     db.prepare(`INSERT INTO audit_log (entity_type, entity_id, action) VALUES ('DR', ?, 'DELETE')`).run(
       dr.public_id
     );
+
+    if (!deleteOrphans && staleVrPublicIds.length) {
+      scheduleNotification(NOTIFICATION_EVENTS.VR_ORPHAN_STALE, deleteNotifyProjectId, {
+        subject: `[Hoverboard] VR(s) stale — sole DR deleted (${dr.public_id})`,
+        text: [
+          `DR ${dr.public_id} was deleted with orphan_vrs=stale.`,
+          `These VR public IDs were marked stale:`,
+          staleVrPublicIds.join(', '),
+        ].join('\n'),
+      });
+    }
 
     res.json({ ok: true, deleted_public_id: dr.public_id, orphan_vrs: deleteOrphans ? 'delete' : 'stale' });
   }

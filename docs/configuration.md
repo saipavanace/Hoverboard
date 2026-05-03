@@ -10,6 +10,7 @@ Environment overrides:
 | **`HOVERBOARD_DB_PATH`** | SQLite file location |
 | **`HOVERBOARD_UPLOADS_DIR`** | Directory for uploaded files (default: `server/uploads` next to the API) |
 | **`HOVERBOARD_AUTH_DISABLED`** | `true` forces auth-disabled mode (development only; **do not** use in production) |
+| **`HOVERBOARD_SMTP_PASS`** | SMTP password for **`notifications.smtp`** when you omit **`pass`** from JSON (recommended in production) |
 
 ---
 
@@ -27,7 +28,30 @@ Environment overrides:
 | **`coverageRegex`** | object | See below |
 | **`vrLogRegex`** | string | Regex to capture VR public IDs from log lines |
 | **`iso26262Enabled`** | boolean | **`false`** (default) — ISO 26262 workspace, project **Audit** nav, and `/api/iso/*` are off. Set **`true`** to enable them (opt-in) |
+| **`notifications`** | object | Optional **SMTP** + **event subscriptions** for email alerts — **see below** |
 | **`auth`** | object | Authentication — **see dedicated section** |
+
+---
+
+## `notifications` (email alerts)
+
+Email is sent through **nodemailer** when **`notifications.enabled`** is **`true`** and at least one **`subscriptions`** row matches the event and (optional) project.
+
+| Key | Type | Description |
+| --- | --- | --- |
+| **`enabled`** | boolean | Master switch for dispatch (test email from Settings still attempts SMTP regardless). |
+| **`smtp`** | object | **`host`**, **`port`** (default 587), **`secure`** (boolean TLS), **`user`**, **`pass`** (omit in file if using **`HOVERBOARD_SMTP_PASS`**), **`from`**: `{ "name", "address" }`. |
+| **`subscriptions`** | array | Each row: **`event`** (see table below), optional **`projectId`** (`null` / omit = all projects), **`emails`**: string array **or** comma-separated string. |
+
+**Events (`event` values):**
+
+| Value | When mail is sent |
+| --- | --- |
+| **`spec_version_published`** | A new spec file version was uploaded successfully. |
+| **`dr_stale_after_spec`** | One or more DRs were marked stale because their excerpt no longer appears in the latest spec text. |
+| **`vr_orphan_stale`** | Deleting a DR left a solely-linked VR marked stale (`orphan_vrs=stale`). |
+
+Set **`HOVERBOARD_SMTP_PASS`** in the environment to avoid storing SMTP passwords in **`hoverboard.config.json`**.
 
 ---
 
