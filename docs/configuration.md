@@ -14,6 +14,12 @@ Environment overrides:
 
 ---
 
+## Admin full snapshot (system administrator)
+
+Hoverboard can expose a **JSON mirror** of SQLite rows plus merged config and derived metrics for **`system_admin`** users (**Admin → Data mirror**, **`GET /api/admin/full-snapshot`**). The relational tables remain **canonical**; an optional **`admin_persisted_snapshot`** row is **not** auto-updated on ingest (to avoid duplicating the whole DB on every regression run). Details and API table: **[Administrator guide — Full data mirror](admin_guide.md#full-data-mirror-system-administrator)**.
+
+---
+
 ## Top-level schema
 
 | Key | Type | Description |

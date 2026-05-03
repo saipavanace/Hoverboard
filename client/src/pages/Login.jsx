@@ -112,6 +112,30 @@ export default function Login() {
           </p>
         </div>
 
+        {typeof window !== 'undefined' && window.location.hostname === '127.0.0.1' && (
+          <div
+            role="status"
+            style={{
+              marginBottom: '1rem',
+              padding: '0.65rem 0.85rem',
+              borderRadius: 10,
+              border: '1px solid rgba(251,191,36,0.45)',
+              background: 'rgba(251,191,36,0.12)',
+              fontSize: '0.82rem',
+              color: 'var(--text)',
+              lineHeight: 1.45,
+            }}
+          >
+            You opened this page via <strong>127.0.0.1</strong>. Session cookies do not apply to{' '}
+            <strong>localhost</strong> (and vice versa). Use{' '}
+            <a href={`http://localhost:${window.location.port || ''}${window.location.pathname}${window.location.search}`}>
+              http://localhost:{window.location.port || '5173'}
+              {window.location.pathname}
+            </a>{' '}
+            for login and the app so API calls stay authenticated.
+          </div>
+        )}
+
         <div
           className="card"
           style={{

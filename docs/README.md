@@ -14,7 +14,7 @@ Welcome. These guides are written for **end users**, **project leads**, and **pl
 | If you… | Read |
 | --- | --- |
 | Install or operate the server | [Installation](installation.md), [Docker quickstart](docker-quickstart.md), [Configuration](configuration.md), [Troubleshooting](troubleshooting.md) |
-| Manage users and policies | [Admin guide](admin_guide.md), [Authentication](authentication.md) |
+| Manage users and policies | [Admin guide](admin_guide.md) (includes **Data mirror** / full DB JSON export), [Authentication](authentication.md) |
 | Author requirements and verification | [Project guide](project_guide.md), [Artifacts & traceability](artifacts_and_traceability.md) |
 | Run reviews / approvals | [Reviews & approvals](reviews_and_approvals.md), [Comments](comments.md) |
 | Support audits | [Audit & baselines](audit_and_baselines.md), [Artifacts & traceability](artifacts_and_traceability.md) |

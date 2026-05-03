@@ -16,6 +16,7 @@ Administrators reach **Administration** from **`/projects/:projectId/admin`** (l
 | **audit** | Administrative audit feed |
 | **baselines** | Baseline records |
 | **signoff** | Sign-off policy rules |
+| **Data mirror** | **System administrators only** — full JSON snapshot of DB rows + derived metrics (see below) |
 
 Exact visibility depends on your roles and server configuration. Non–system-admins may see **teams**, **baselines**, and **signoff** without the **users** / **auth** / **audit** tabs. The platform **audit** tab is for system administrators only.
 
@@ -138,6 +139,40 @@ Implement by adding rows via Admin or API; test with a draft VR and a non-author
 
 ---
 
+## Full data mirror (system administrator)
+
+The **Data mirror** tab shows **one JSON document** that reflects how Hoverboard sees the database at refresh time:
+
+| Section | Contents |
+| --- | --- |
+| **`meta`** | Schema version, ISO timestamp, operational notes |
+| **`config`** | Merged **`hoverboard.config.json`** (same shape as **`GET /api/config`** internally) |
+| **`tables`** | Row arrays keyed by SQLite table name for DRs, VRs, specs, regressions, coverage, users (minus secrets—see below), etc. |
+| **`computed`** | **Derived only** — per-project dashboard metrics and recent **`coverage_metrics`** history for inspection; editing these keys does **not** change behavior unless underlying rows change |
+
+### Canonical data vs this snapshot
+
+- **Source of truth** is always the **normal relational tables** (`drs`, `vrs`, `regression_signatures`, …). The JSON is an **export / inspection view**, not a parallel database.
+- Storing a full JSON blob **on every ingest** would duplicate almost everything and inflate the SQLite file; Hoverboard **does not** auto-save the mirror after regression or coverage ingest.
+- **Persisted row:** **`admin_persisted_snapshot`** (single row in SQLite) is updated only when a system administrator calls **`POST /api/admin/full-snapshot/persist`** (**Save to DB** in the UI) or after a successful **Apply** from the mirror (which refreshes that row). Use it for an intentional checkpoint or audit trail—not as live application state.
+
+### APIs
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | **`/api/admin/full-snapshot`** | Live snapshot built from current DB |
+| GET | **`/api/admin/full-snapshot/persisted`** | Last saved **`admin_persisted_snapshot`** row (if any) |
+| POST | **`/api/admin/full-snapshot/persist`** | Serialize current DB into **`admin_persisted_snapshot`** |
+| PUT | **`/api/admin/full-snapshot`** | **Destructive:** replace exported tables from JSON body; requires header **`X-Hoverboard-Admin-Confirm: REPLACE_DATABASE_FROM_JSON`** |
+
+The UI parses the textarea with **JSON5** (not only strict JSON), so **trailing commas** after the last property in an object/array—common when editing large snapshots—do not block **Apply**. Strict **`JSON.parse`** would reject those with errors like “Expected property name or `}`”. If **`meta.schemaVersion`** is missing (e.g. you pasted only **`tables`**), the server treats the snapshot as the current schema (**`1`**). If **`tables`** is missing but the JSON is only **`{ "projects": [...], "specs": [...], ... }`** (each top-level key is a table name and an array of rows), Apply treats that root object as **`tables`**. The client also **unwraps** values under **`snapshot` / `payload` / `body` / `json` / `data` / `result`** when the real export is nested there, and **rebuilds** **`tables`** from root-level row arrays before sending.
+
+Password hashes are exported as **`[REDACTED]`**; Apply maps that token to **`NULL`** (users must reset passwords through your normal process).
+
+**Operational warning:** Treat **Apply** like restoring from backup—test on a copy, keep SQLite backups, and prefer fixing data through normal APIs or SQL maintenance unless you are recovering from corruption.
+
+---
+
 ## Built-in administrator guardrails
 
 The reserved built-in account (**`admin`**) cannot be modified through normal admin PATCH/role APIs — use SSO and dedicated service accounts for ongoing operations.
@@ -146,6 +181,7 @@ The reserved built-in account (**`admin`**) cannot be modified through normal ad
 
 ## Related documentation
 
+- **[Architecture](architecture.md)** — Canonical data vs optional **`admin_persisted_snapshot`** row.
 - **[Authentication](authentication.md)** — SSO and local login.
 - **[Reviews and approvals](reviews_and_approvals.md)** — Independence levels in detail.
 - **[Configuration](configuration.md)** — `defaultProjectRole`, OIDC, session TTL.

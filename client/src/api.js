@@ -18,14 +18,19 @@ function projectHeaders(extra = {}) {
 const json = async (path, opts = {}) => {
   const baseHeaders =
     opts.body instanceof FormData ? projectHeaders({ ...opts.headers }) : projectHeaders({ 'Content-Type': 'application/json', ...opts.headers });
+  // Do not `...opts` into fetch: a caller `headers` would replace this object and drop
+  // Content-Type — Express then skips JSON parse and req.body stays {}.
+  const { headers: _omitHeaders, ...rest } = opts;
   const r = await fetch(path, {
     credentials: 'include',
+    ...rest,
     headers: baseHeaders,
-    ...opts,
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
-    const e = new Error(err.error || r.statusText);
+    const msg =
+      err.error && err.hint ? `${err.error}. ${err.hint}` : err.error || r.statusText;
+    const e = new Error(msg);
     e.status = r.status;
     throw e;
   }
@@ -178,6 +183,25 @@ export const api = {
   adminSignoffRules: () => json('/api/admin/signoff-rules'),
   adminCreateSignoffRule: (body) =>
     json('/api/admin/signoff-rules', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** System admin: full DB mirror JSON (live from SQLite + computed metrics). */
+  adminFullSnapshot: () => json('/api/admin/full-snapshot'),
+  adminFullSnapshotPersisted: () => json('/api/admin/full-snapshot/persisted'),
+  adminFullSnapshotPersist: () =>
+    json('/api/admin/full-snapshot/persist', { method: 'POST' }),
+  /** Destructive: replaces exported tables from edited snapshot JSON. */
+  adminFullSnapshotApply: (body) => {
+    if (body == null || typeof body !== 'object') {
+      throw new Error('Apply payload must be a non-null object');
+    }
+    return json('/api/admin/full-snapshot', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+      headers: {
+        'X-Hoverboard-Admin-Confirm': 'REPLACE_DATABASE_FROM_JSON',
+      },
+    });
+  },
 
   teams: (projectId) => json(`/api/projects/${projectId}/teams`),
   createTeam: (projectId, body) =>

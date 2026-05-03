@@ -47,8 +47,13 @@ Major entity groups:
 | **audit_*** / **audit_log** | Compliance-oriented event history |
 | **signoff_rules** | Per-project approval policy |
 | **counters** | Monotonic IDs for DR/VR public identifiers |
+| **admin_persisted_snapshot** | Optional single-row JSON **cache** for system-admin export UI — **not** a second source of truth |
 
 **Migrations** — Additive schema changes run from **`server/db.js`** at startup (SQLite **`ALTER TABLE`** guards).
+
+### Canonical data vs admin snapshot row
+
+All application behavior reads **relational tables** (`drs`, `vrs`, `coverage_metrics`, …). The **`admin_persisted_snapshot`** table stores at most **one** JSON blob for convenience (audit checkpoint, diffing, support). It is **not** updated on every ingest—doing so would duplicate most of the database and create confusion about which copy is authoritative. System administrators refresh it explicitly (**`POST /api/admin/full-snapshot/persist`**) or by loading **Apply** after a deliberate restore. See **[Administrator guide — Full data mirror](admin_guide.md#full-data-mirror-system-administrator)**.
 
 ---
 

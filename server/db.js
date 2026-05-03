@@ -455,6 +455,14 @@ CREATE TABLE IF NOT EXISTS user_synced_groups (
   }
 })();
 
+db.exec(`
+CREATE TABLE IF NOT EXISTS admin_persisted_snapshot (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  json TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
 export function nextPublicId(prefix, counterKey) {
   const run = db.transaction(() => {
     db.prepare('UPDATE counters SET value = value + 1 WHERE key = ?').run(counterKey);

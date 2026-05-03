@@ -100,10 +100,13 @@ export function attachAuth(req, res, next) {
   return next();
 }
 
+const SESSION_HINT =
+  'Session cookie missing on this request (often localhost vs 127.0.0.1, or UI/API on different hosts without one reverse-proxy origin). Sign in again using the same URL you use for the app.';
+
 export function requireLogin(req, res, next) {
   if (authDisabled()) return next();
   if (!req.authUser?.id) {
-    return res.status(401).json({ error: 'authentication required' });
+    return res.status(401).json({ error: 'authentication required', hint: SESSION_HINT });
   }
   return next();
 }
@@ -118,7 +121,7 @@ export function requireApiAuth(req, res, next) {
   const pathname = (req.originalUrl || req.url || '').split('?')[0];
   if (isPublicPath(pathname)) return next();
   if (!req.authUser?.id) {
-    return res.status(401).json({ error: 'authentication required' });
+    return res.status(401).json({ error: 'authentication required', hint: SESSION_HINT });
   }
   return next();
 }
