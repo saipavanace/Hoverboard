@@ -487,7 +487,7 @@ app.get('/api/specs', requireListAccess('specs_read'), (req, res) => {
   }
   if (q) {
     const qq = `%${q}%`;
-    sql += ' AND (name LIKE ? OR identifier LIKE ? OR IFNULL(folder_path, "") LIKE ?)';
+    sql += ' AND (name LIKE ? OR identifier LIKE ? OR IFNULL(folder_path, \'\') LIKE ?)';
     params.push(qq, qq, qq);
   }
   sql += ' ORDER BY id DESC';
@@ -830,7 +830,7 @@ app.get('/api/drs', requireListAccess('drs_read'), (req, res) => {
   if (q) {
     const qq = `%${q}%`;
     sql +=
-      ' AND (drs.excerpt LIKE ? OR drs.public_id LIKE ? OR IFNULL(drs.labels, "") LIKE ? OR IFNULL(drs.category, "") LIKE ?)';
+      ' AND (drs.excerpt LIKE ? OR drs.public_id LIKE ? OR IFNULL(drs.labels, \'\') LIKE ? OR IFNULL(drs.category, \'\') LIKE ?)';
     params.push(qq, qq, qq, qq);
   }
   sql += ' ORDER BY drs.id DESC';
@@ -1239,7 +1239,7 @@ app.get('/api/vrs', requireListAccess('vrs_read'), (req, res) => {
   if (q) {
     const qq = `%${q}%`;
     sql +=
-      ' AND (title LIKE ? OR IFNULL(description, "") LIKE ? OR public_id LIKE ? OR IFNULL(labels, "") LIKE ? OR IFNULL(category, "") LIKE ?)';
+      ' AND (title LIKE ? OR IFNULL(description, \'\') LIKE ? OR public_id LIKE ? OR IFNULL(labels, \'\') LIKE ? OR IFNULL(category, \'\') LIKE ?)';
     params.push(qq, qq, qq, qq, qq);
   }
   sql += ' ORDER BY id DESC';

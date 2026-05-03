@@ -28,9 +28,7 @@ const json = async (path, opts = {}) => {
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
-    const msg =
-      err.error && err.hint ? `${err.error}. ${err.hint}` : err.error || r.statusText;
-    const e = new Error(msg);
+    const e = new Error(err.error || r.statusText);
     e.status = r.status;
     throw e;
   }
@@ -184,24 +182,8 @@ export const api = {
   adminCreateSignoffRule: (body) =>
     json('/api/admin/signoff-rules', { method: 'POST', body: JSON.stringify(body) }),
 
-  /** System admin: full DB mirror JSON (live from SQLite + computed metrics). */
+  /** System admin: read-only full DB mirror JSON (live from SQLite + computed metrics). */
   adminFullSnapshot: () => json('/api/admin/full-snapshot'),
-  adminFullSnapshotPersisted: () => json('/api/admin/full-snapshot/persisted'),
-  adminFullSnapshotPersist: () =>
-    json('/api/admin/full-snapshot/persist', { method: 'POST' }),
-  /** Destructive: replaces exported tables from edited snapshot JSON. */
-  adminFullSnapshotApply: (body) => {
-    if (body == null || typeof body !== 'object') {
-      throw new Error('Apply payload must be a non-null object');
-    }
-    return json('/api/admin/full-snapshot', {
-      method: 'PUT',
-      body: JSON.stringify(body),
-      headers: {
-        'X-Hoverboard-Admin-Confirm': 'REPLACE_DATABASE_FROM_JSON',
-      },
-    });
-  },
 
   teams: (projectId) => json(`/api/projects/${projectId}/teams`),
   createTeam: (projectId, body) =>

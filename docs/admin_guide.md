@@ -152,24 +152,15 @@ The **Data mirror** tab shows **one JSON document** that reflects how Hoverboard
 
 ### Canonical data vs this snapshot
 
-- **Source of truth** is always the **normal relational tables** (`drs`, `vrs`, `regression_signatures`, …). The JSON is an **export / inspection view**, not a parallel database.
-- Storing a full JSON blob **on every ingest** would duplicate almost everything and inflate the SQLite file; Hoverboard **does not** auto-save the mirror after regression or coverage ingest.
-- **Persisted row:** **`admin_persisted_snapshot`** (single row in SQLite) is updated only when a system administrator calls **`POST /api/admin/full-snapshot/persist`** (**Save to DB** in the UI) or after a successful **Apply** from the mirror (which refreshes that row). Use it for an intentional checkpoint or audit trail—not as live application state.
+- **Source of truth** is always the **normal relational tables** (`drs`, `vrs`, `regression_signatures`, …). The JSON is a **read-only export / inspection view**, not a parallel database.
 
-### APIs
+### API
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | **`/api/admin/full-snapshot`** | Live snapshot built from current DB |
-| GET | **`/api/admin/full-snapshot/persisted`** | Last saved **`admin_persisted_snapshot`** row (if any) |
-| POST | **`/api/admin/full-snapshot/persist`** | Serialize current DB into **`admin_persisted_snapshot`** |
-| PUT | **`/api/admin/full-snapshot`** | **Destructive:** replace exported tables from JSON body; requires header **`X-Hoverboard-Admin-Confirm: REPLACE_DATABASE_FROM_JSON`** |
+| GET | **`/api/admin/full-snapshot`** | Live snapshot built from the current DB (same document as **Refresh live** in the UI) |
 
-The UI parses the textarea with **JSON5** (not only strict JSON), so **trailing commas** after the last property in an object/array—common when editing large snapshots—do not block **Apply**. Strict **`JSON.parse`** would reject those with errors like “Expected property name or `}`”. If **`meta.schemaVersion`** is missing (e.g. you pasted only **`tables`**), the server treats the snapshot as the current schema (**`1`**). If **`tables`** is missing but the JSON is only **`{ "projects": [...], "specs": [...], ... }`** (each top-level key is a table name and an array of rows), Apply treats that root object as **`tables`**. The client also **unwraps** values under **`snapshot` / `payload` / `body` / `json` / `data` / `result`** when the real export is nested there, and **rebuilds** **`tables`** from root-level row arrays before sending.
-
-Password hashes are exported as **`[REDACTED]`**; Apply maps that token to **`NULL`** (users must reset passwords through your normal process).
-
-**Operational warning:** Treat **Apply** like restoring from backup—test on a copy, keep SQLite backups, and prefer fixing data through normal APIs or SQL maintenance unless you are recovering from corruption.
+Password hashes are exported as **`[REDACTED]`**.
 
 ---
 
@@ -181,7 +172,7 @@ The reserved built-in account (**`admin`**) cannot be modified through normal ad
 
 ## Related documentation
 
-- **[Architecture](architecture.md)** — Canonical data vs optional **`admin_persisted_snapshot`** row.
+- **[Architecture](architecture.md)** — Relational tables as the source of truth; JSON mirror is export-only.
 - **[Authentication](authentication.md)** — SSO and local login.
 - **[Reviews and approvals](reviews_and_approvals.md)** — Independence levels in detail.
 - **[Configuration](configuration.md)** — `defaultProjectRole`, OIDC, session TTL.

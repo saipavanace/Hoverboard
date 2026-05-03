@@ -4,7 +4,7 @@ import * as client from 'openid-client';
 import { db } from '../db.js';
 import { loadConfig } from '../config.js';
 import { hashPassword, verifyPassword } from '../services/password.js';
-import { isBuiltinAdminEmail } from '../services/builtinAdmin.js';
+import { ensureBuiltinAdmin, isBuiltinAdminEmail } from '../services/builtinAdmin.js';
 import { findUserByLocalLogin, normalizeUsername, isReservedUsername } from '../services/username.js';
 import { appendAuditEvent } from '../services/auditEvents.js';
 import {
@@ -136,6 +136,10 @@ router.post('/login', (req, res) => {
   if (!cfg.auth?.localLoginEnabled) {
     return res.status(403).json({ error: 'local login disabled' });
   }
+  // Sync break-glass admin row (email/username/hash from config/env) before lookup — an existing
+  // user row with NULL password_hash would otherwise always fail: !user.password_hash in the check below.
+  ensureBuiltinAdmin();
+
   const rawLogin = req.body?.email ?? req.body?.username;
   const { password } = req.body || {};
   if (!rawLogin || !password) return res.status(400).json({ error: 'email or username and password required' });

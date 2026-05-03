@@ -12,6 +12,7 @@ import {
 export default function JsonTextSearchField({
   value,
   onChange,
+  readOnly = false,
   rows = 16,
   minHeight,
   fontSize = '0.82rem',
@@ -261,8 +262,9 @@ export default function JsonTextSearchField({
         <textarea
           ref={jsonTextareaRef}
           className="json-text-search-target"
+          readOnly={readOnly}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => !readOnly && onChange(e.target.value)}
           onScroll={(e) => {
             const ta = e.target;
             const pre = jsonHighlightPreRef.current;
@@ -299,7 +301,7 @@ export default function JsonTextSearchField({
             whiteSpace: 'pre',
             overflow: 'auto',
             tabSize: 2,
-            resize,
+            resize: readOnly ? 'none' : resize,
             ...textareaDims,
           }}
         />

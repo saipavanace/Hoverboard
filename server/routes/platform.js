@@ -1,4 +1,3 @@
-import express from 'express';
 import { Router } from 'express';
 import { db } from '../db.js';
 import { appendAuditEvent } from '../services/auditEvents.js';
@@ -12,13 +11,7 @@ import { requireProjectPermission } from '../middleware/permissions.js';
 import { projectIdFromArtifact } from '../services/projectResolution.js';
 import { managerAssignmentWouldCycle } from '../services/hierarchyValidation.js';
 import { loadConfig } from '../config.js';
-import {
-  buildFullSnapshot,
-  persistSnapshot,
-  loadPersistedSnapshot,
-  applyFullSnapshot,
-  SNAPSHOT_SCHEMA_VERSION,
-} from '../services/adminFullSnapshot.js';
+import { buildFullSnapshot } from '../services/adminFullSnapshot.js';
 
 const router = Router();
 
@@ -631,7 +624,7 @@ router.get('/admin/audit-events', requireAdminOrAuditor, (req, res) => {
   res.json(rows);
 });
 
-/** System admin: live JSON mirror of DB + computed metrics (break-glass inspection). */
+/** System admin: read-only JSON mirror of DB + computed metrics (inspection). */
 router.get('/admin/full-snapshot', requireSystemAdmin, (_req, res) => {
   try {
     res.json(buildFullSnapshot(db));
@@ -639,52 +632,5 @@ router.get('/admin/full-snapshot', requireSystemAdmin, (_req, res) => {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
-
-router.get('/admin/full-snapshot/persisted', requireSystemAdmin, (_req, res) => {
-  const row = loadPersistedSnapshot(db);
-  if (!row) return res.json({ persisted: null, updatedAt: null });
-  res.json({
-    persisted: row.payload,
-    updatedAt: row.updatedAt,
-    parseError: Boolean(row.parseError),
-  });
-});
-
-router.post('/admin/full-snapshot/persist', requireSystemAdmin, (_req, res) => {
-  try {
-    res.json(persistSnapshot(db));
-  } catch (e) {
-    res.status(500).json({ error: String(e.message || e) });
-  }
-});
-
-router.put(
-  '/admin/full-snapshot',
-  requireSystemAdmin,
-  express.json({ limit: '80mb' }),
-  (req, res) => {
-    const confirm = String(req.headers['x-hoverboard-admin-confirm'] || '').trim();
-    if (confirm !== 'REPLACE_DATABASE_FROM_JSON') {
-      return res.status(400).json({
-        error:
-          'Missing confirmation: send header X-Hoverboard-Admin-Confirm: REPLACE_DATABASE_FROM_JSON with PUT body from a prior GET /api/admin/full-snapshot.',
-      });
-    }
-    try {
-      applyFullSnapshot(db, req.body);
-      appendAuditEvent({
-        actorUserId: req.authUser?.id ?? null,
-        action: 'ADMIN_FULL_SNAPSHOT_APPLY',
-        entityType: 'DATABASE',
-        detail: { schemaVersion: SNAPSHOT_SCHEMA_VERSION },
-        ip: req.ip || null,
-      });
-      const meta = persistSnapshot(db);
-      res.json({ ok: true, schemaVersion: SNAPSHOT_SCHEMA_VERSION, persisted: meta });
-    } catch (e) {
-      res.status(400).json({ error: String(e.message || e) });
-    }
-  }
-);
 
 export default router;

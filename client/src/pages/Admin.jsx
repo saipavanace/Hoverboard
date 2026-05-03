@@ -3,7 +3,6 @@ import { api } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import JsonTextSearchField from '../components/JsonTextSearchField.jsx';
 import { useProject } from '../context/ProjectContext.jsx';
-import { normalizeSnapshotForApply, parseSnapshotJson } from '../utils/parseSnapshotJson.js';
 
 export default function Admin() {
   const { user, loading, isAdmin, isSystemAdmin } = useAuth();
@@ -787,7 +786,10 @@ export default function Admin() {
 
       {tab === 'snapshot' && (user?.authDisabled || isSystemAdmin) && (
         <div className="card">
-          <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Full data mirror</div>
+          <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Full data mirror</div>
+          <p style={{ margin: '0 0 0.65rem', fontSize: '0.82rem', color: 'var(--muted)', lineHeight: 1.45 }}>
+            Read-only JSON export for inspection. Canonical state remains in SQLite tables.
+          </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.65rem', alignItems: 'center' }}>
             <button
               type="button"
@@ -811,133 +813,14 @@ export default function Admin() {
             >
               Refresh live
             </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={snapshotBusy}
-              onClick={async () => {
-                setSnapshotBusy(true);
-                setError('');
-                setMsg('');
-                try {
-                  const r = await api.adminFullSnapshotPersisted();
-                  if (!r.persisted) {
-                    setMsg('No persisted row yet (run ingest or Save to DB).');
-                    return;
-                  }
-                  setSnapshotText(JSON.stringify(r.persisted, null, 2));
-                  setSnapshotMeta(r.updatedAt ? `Persisted at ${r.updatedAt}` : '');
-                  setMsg('Loaded persisted snapshot.');
-                } catch (e) {
-                  setError(e.message);
-                } finally {
-                  setSnapshotBusy(false);
-                }
-              }}
-            >
-              Load persisted
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={snapshotBusy}
-              onClick={async () => {
-                setSnapshotBusy(true);
-                setError('');
-                setMsg('');
-                try {
-                  const r = await api.adminFullSnapshotPersist();
-                  setMsg(`Saved mirror to DB (${Math.round((r.bytes || 0) / 1024)} KB).`);
-                } catch (e) {
-                  setError(e.message);
-                } finally {
-                  setSnapshotBusy(false);
-                }
-              }}
-            >
-              Save to DB
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              style={{ borderColor: 'rgba(249,115,115,0.5)', color: '#fecaca' }}
-              disabled={snapshotBusy}
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    'Replace database tables from this JSON? This deletes existing rows in exported tables and cannot be undone without a backup.'
-                  )
-                ) {
-                  return;
-                }
-                setSnapshotBusy(true);
-                setError('');
-                setMsg('');
-                try {
-                  let body;
-                  let mirrorJson = snapshotText;
-                  let loadedMirrorForApply = false;
-                  try {
-                    if (parseSnapshotJson(mirrorJson) == null) {
-                      const data = await api.adminFullSnapshot();
-                      mirrorJson = JSON.stringify(data, null, 2);
-                      setSnapshotText(mirrorJson);
-                      setSnapshotMeta(data?.meta?.generatedAt ? String(data.meta.generatedAt) : '');
-                      loadedMirrorForApply = true;
-                    }
-                    const parsed = parseSnapshotJson(mirrorJson);
-                    if (parsed == null) {
-                      setError(
-                        'Could not load snapshot JSON. Use “Refresh live”, fix any admin errors, then try Apply again.'
-                      );
-                      return;
-                    }
-                    body = normalizeSnapshotForApply(parsed);
-                    if (body == null) {
-                      setError('Could not build a snapshot payload. Click “Refresh live” and try again.');
-                      return;
-                    }
-                    if (typeof body !== 'object' || Array.isArray(body)) {
-                      setError('Snapshot must be a JSON object (not an array). Use “Refresh live” for a full export.');
-                      return;
-                    }
-                    if (Object.keys(body).length === 0) {
-                      setError(
-                        'Parsed JSON is empty. If the box looks full, click “Refresh live” to reload—Apply cannot send an empty object.'
-                      );
-                      return;
-                    }
-                  } catch (parseErr) {
-                    setError(
-                      `Snapshot JSON is invalid: ${parseErr.message || parseErr}. Fix syntax near the reported line/column, or reload “Refresh live” and edit carefully (trailing commas are allowed).`
-                    );
-                    return;
-                  }
-                  await api.adminFullSnapshotApply(body);
-                  setMsg(
-                    loadedMirrorForApply
-                      ? 'Applied live snapshot (editor was empty, so the mirror was loaded from the server first). Persisted mirror refreshed.'
-                      : 'Applied JSON and refreshed persisted mirror.'
-                  );
-                  const data = await api.adminFullSnapshot();
-                  setSnapshotText(JSON.stringify(data, null, 2));
-                  setSnapshotMeta(data?.meta?.generatedAt ? String(data.meta.generatedAt) : '');
-                } catch (e) {
-                  setError(e.message || String(e));
-                } finally {
-                  setSnapshotBusy(false);
-                }
-              }}
-            >
-              Apply JSON (destructive)
-            </button>
           </div>
           {snapshotMeta ? (
             <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginBottom: '0.5rem' }}>{snapshotMeta}</div>
           ) : null}
           <JsonTextSearchField
+            readOnly
             value={snapshotText}
-            onChange={setSnapshotText}
+            onChange={() => {}}
             minHeight={420}
             fontSize="0.78rem"
             lineHeight={1.45}
