@@ -139,10 +139,20 @@ If you maintain forked SQL or custom triggers, diff `server/db.js` between relea
 
 ---
 
+## Docker deployment (no Node.js on the server)
+
+If operators **cannot or should not install Node.js** on the host (common on locked-down Linux servers), use the included **`Dockerfile`** and **`docker-compose.yml`**.
+
+- **Guide:** **[docker-quickstart.md](docker-quickstart.md)** — build, run, persist SQLite/uploads, mount config for SSO.
+- **Single URL:** the container serves both the **React UI** and **`/api`** on one port when **`NODE_ENV=production`** (no separate nginx required for a minimal deployment).
+- **Behind HTTPS:** terminate TLS at a reverse proxy or load balancer in front of the published container port.
+
+---
+
 ## Production deployment (outline)
 
 1. Run the **API** behind TLS; set **`NODE_ENV=production`**.
-2. Serve **`client/dist`** from nginx/CDN or embed behind the same host with `/api` routed to Node.
+2. Serve the UI: either use the **Docker image** (bundled static files + API), **`npm start`** with a built **`client/dist`**, or nginx/CDN for **`client/dist`** with `/api` routed to Node.
 3. Set **`auth.oidc.publicAppUrl`** (and related auth fields) to your real SPA URL.
 4. Configure **OIDC redirect URI** to **`https://<api-host>/api/auth/callback`** (must match IdP registration).
 5. Do **not** rely on built-in `admin` / `12345` in production; prefer SSO and disable **`auth.localLoginEnabled`** if policy requires.

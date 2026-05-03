@@ -8,6 +8,7 @@ Environment overrides:
 | --- | --- |
 | **`HOVERBOARD_CONFIG`** | Alternate JSON path |
 | **`HOVERBOARD_DB_PATH`** | SQLite file location |
+| **`HOVERBOARD_UPLOADS_DIR`** | Directory for uploaded files (default: `server/uploads` next to the API) |
 | **`HOVERBOARD_AUTH_DISABLED`** | `true` forces auth-disabled mode (development only; **do not** use in production) |
 
 ---

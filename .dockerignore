@@ -1,0 +1,18 @@
+# Dependencies & build artifacts (reinstalled / rebuilt in image)
+node_modules
+**/node_modules
+client/dist
+
+# Local state — never bake DB/uploads into the image
+server/data
+*.sqlite
+server/uploads
+
+# Dev / IDE
+.git
+.github
+.cursor
+**/.DS_Store
+
+# Docs optional — uncomment to shrink image (operators mount docs externally if needed)
+# docs

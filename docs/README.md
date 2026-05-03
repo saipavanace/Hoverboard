@@ -5,14 +5,15 @@ Welcome. These guides are written for **end users**, **project leads**, and **pl
 ## Start here
 
 1. **[Installation](installation.md)** — Get the application running in development or production.
-2. **[Authentication](authentication.md)** — Sign-in options: enterprise SSO or local accounts.
-3. **[Project guide](project_guide.md)** — Create a project and day-to-day navigation.
+2. **[Docker quickstart](docker-quickstart.md)** — Run with Docker only (no Node.js on the host).
+3. **[Authentication](authentication.md)** — Sign-in options: enterprise SSO or local accounts.
+4. **[Project guide](project_guide.md)** — Create a project and day-to-day navigation.
 
 ## By role
 
 | If you… | Read |
 | --- | --- |
-| Install or operate the server | [Installation](installation.md), [Configuration](configuration.md), [Troubleshooting](troubleshooting.md) |
+| Install or operate the server | [Installation](installation.md), [Docker quickstart](docker-quickstart.md), [Configuration](configuration.md), [Troubleshooting](troubleshooting.md) |
 | Manage users and policies | [Admin guide](admin_guide.md), [Authentication](authentication.md) |
 | Author requirements and verification | [Project guide](project_guide.md), [Artifacts & traceability](artifacts_and_traceability.md) |
 | Run reviews / approvals | [Reviews & approvals](reviews_and_approvals.md), [Comments](comments.md) |

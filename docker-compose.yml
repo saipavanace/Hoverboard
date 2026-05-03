@@ -1,0 +1,33 @@
+# Hoverboard — single service, SQLite + uploads on a named volume.
+# No Node.js on the host required.
+#
+# Quick start:
+#   docker compose up -d --build
+#   Open http://localhost:8080
+#
+# Override port on host:
+#   HOVERBOARD_HTTP_PORT=3000 docker compose up -d
+
+services:
+  hoverboard:
+    build: .
+    container_name: hoverboard
+    ports:
+      - "${HOVERBOARD_HTTP_PORT:-8080}:5179"
+    environment:
+      NODE_ENV: production
+      PORT: "5179"
+      HOVERBOARD_DB_PATH: /data/hoverboard.sqlite
+      HOVERBOARD_UPLOADS_DIR: /data/uploads
+      # Optional: alternate config file inside the container (mount your own file below)
+      # HOVERBOARD_CONFIG: /config/hoverboard.config.json
+    volumes:
+      - hoverboard_data:/data
+      # Uncomment to use your own config (OIDC, branding, etc.):
+      # - ./my-hoverboard.config.json:/app/hoverboard.config.json:ro
+      # Or mount a directory and set HOVERBOARD_CONFIG:
+      # - ./config:/config:ro
+    restart: unless-stopped
+
+volumes:
+  hoverboard_data:

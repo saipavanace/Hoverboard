@@ -23,6 +23,8 @@ Hoverboard is a web application for **hardware/software verification–oriented 
 
 ## Quick start
 
+### Option A — Node.js on your machine (development)
+
 **Prerequisites:** Node.js **20+**, npm.
 
 From the repository root:
@@ -39,6 +41,18 @@ npm run dev
 | **Web UI** | [http://localhost:5173](http://localhost:5173) — proxies `/api` and `/uploads` to the API |
 | **API** | [http://localhost:5179](http://localhost:5179) — set `PORT` to change |
 
+### Option B — Docker only (no Node on the host)
+
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) and Docker Compose v2.
+
+```bash
+docker compose up -d --build
+```
+
+Open **[http://localhost:8080](http://localhost:8080)** — UI and API on one port. Database and uploads persist in a Docker volume. Full steps: **[Docker quickstart](docs/docker-quickstart.md)**.
+
+---
+
 1. Open the web app; sign in (see [Authentication](docs/authentication.md)).
 2. On first visit after login, use **Open projects** to pick a workspace or **Create project** to start fresh (optionally **start from** an existing project to copy structure).
 3. Inside a project: **Specs**, **Design requirements**, **Verification**, **Dashboard**, etc.
@@ -50,8 +64,10 @@ npm run dev
 ```bash
 npm test              # client + server tests
 npm run build           # client bundle → client/dist
-npm start               # API only (production); serve static files per your deployment
+npm start               # production API; also serves client/dist when built (NODE_ENV=production)
 ```
+
+For production without installing Node on the server, use **`docker compose`** — see **[docs/docker-quickstart.md](docs/docker-quickstart.md)**.
 
 ---
 
@@ -75,6 +91,7 @@ Full documentation for adopters and administrators:
 | --- | --- |
 | [Documentation index](docs/README.md) | Central map of all guides |
 | [Installation](docs/installation.md) | Prerequisites, env vars, database, running services |
+| [Docker quickstart](docs/docker-quickstart.md) | Run without Node on the host; compose, volumes, SSO config |
 | [Authentication](docs/authentication.md) | SSO (Azure AD, Google, Okta, generic OIDC), local login |
 | [Admin guide](docs/admin_guide.md) | Users, roles, teams, sign-off rules |
 | [Project guide](docs/project_guide.md) | Projects, switching, import, settings |

@@ -118,7 +118,10 @@ function mapVrToClient(v, extra = {}) {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const uploadsDir = path.join(__dirname, 'uploads');
+const uploadsDir =
+  process.env.HOVERBOARD_UPLOADS_DIR != null && String(process.env.HOVERBOARD_UPLOADS_DIR).trim() !== ''
+    ? path.resolve(process.env.HOVERBOARD_UPLOADS_DIR)
+    : path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 ensureBuiltinAdmin();
@@ -1646,11 +1649,29 @@ function csvEscape(s) {
   return `"${t}"`;
 }
 
+/** Serve built SPA when present (Docker / production single-port deploy). */
+const clientDist = path.resolve(__dirname, '..', 'client', 'dist');
+if (
+  process.env.NODE_ENV === 'production' &&
+  fs.existsSync(path.join(clientDist, 'index.html'))
+) {
+  app.use(express.static(clientDist, { index: false }));
+  app.get('*', (req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
 export { app };
 
 const PORT = Number(process.env.PORT) || 5179;
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
-    console.log(`Hoverboard API http://localhost:${PORT}`);
+    const ui =
+      process.env.NODE_ENV === 'production' && fs.existsSync(path.join(clientDist, 'index.html'))
+        ? 'web app + API'
+        : 'API';
+    console.log(`Hoverboard ${ui} http://localhost:${PORT}`);
   });
 }
