@@ -26,6 +26,24 @@ There is **no** project drop-down in the header anymore — navigation favors cl
 
 ---
 
+## Tool version (Hoverboard release)
+
+The UI shows the **running server release** (for example **`v0.1.0-beta.1`**) next to the product name in the project shell, on the sign-in screen, on the **Projects** hub, and on the **ISO 26262** workspace intro — useful when records must state which qualified tool instance produced an export.
+
+Versions use **semantic versioning**: **`MAJOR.MINOR.PATCH`**, with an optional **pre-release** suffix such as **`-beta.N`**. In brief:
+
+| Part | Meaning |
+| --- | --- |
+| **MAJOR** | Breaking changes to behavior, APIs, or stored data that safety processes should treat as **re-qualification**. |
+| **MINOR** | Backward-compatible features. |
+| **PATCH** | Fixes within the same compatibility contract. |
+
+Pre-releases (**alpha → beta → rc**) roll up toward **1.0.0** as the first **stable** GA-style milestone; **`0.x`** lines indicate pre-1.0 evolution.
+
+Deployment teams set the value in **`server/package.json`** (`version`) when installing or upgrading. **`GET /api/health`** returns **`version`** (and structured **`versionMeta`**); **`GET /api/config`** returns **`toolVersion`** and **`toolVersionMeta`** for the same identifier.
+
+---
+
 ## Importing data
 
 ### Specifications
