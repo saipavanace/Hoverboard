@@ -483,6 +483,138 @@ CREATE TABLE IF NOT EXISTS regression_signature_requirements (
 );
 `);
 
+/** SpecPilot: grounded spec RAG (documents, chunks, optional embeddings, Q&A cache, artifact links). */
+db.exec(`
+CREATE TABLE IF NOT EXISTS specpilot_documents (
+  id TEXT PRIMARY KEY,
+  project_id INTEGER NOT NULL,
+  file_name TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_size INTEGER NOT NULL DEFAULT 0,
+  storage_path TEXT,
+  status TEXT NOT NULL DEFAULT 'uploaded',
+  status_message TEXT,
+  content_hash TEXT,
+  raw_text TEXT,
+  metadata_json TEXT,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS specpilot_chunks (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL,
+  section_path TEXT NOT NULL DEFAULT '',
+  heading TEXT,
+  chunk_index INTEGER NOT NULL DEFAULT 0,
+  text TEXT NOT NULL,
+  page_start INTEGER,
+  page_end INTEGER,
+  token_count INTEGER NOT NULL DEFAULT 0,
+  content_hash TEXT NOT NULL,
+  is_table INTEGER NOT NULL DEFAULT 0,
+  metadata_json TEXT,
+  FOREIGN KEY (document_id) REFERENCES specpilot_documents(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS spec_chunk_embeddings (
+  chunk_id TEXT PRIMARY KEY,
+  embedding BLOB NOT NULL,
+  dim INTEGER NOT NULL,
+  model_name TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (chunk_id) REFERENCES specpilot_chunks(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS specpilot_questions (
+  id TEXT PRIMARY KEY,
+  project_id INTEGER NOT NULL,
+  question_text TEXT NOT NULL,
+  selected_document_ids_json TEXT,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  answer_status TEXT,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS specpilot_answers (
+  id TEXT PRIMARY KEY,
+  question_id TEXT NOT NULL,
+  answer_json TEXT NOT NULL,
+  model_name TEXT,
+  retrieval_metadata_json TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (question_id) REFERENCES specpilot_questions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS spec_artifact_links (
+  id TEXT PRIMARY KEY,
+  project_id INTEGER NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  link_type TEXT NOT NULL DEFAULT 'related_to',
+  confidence REAL,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  metadata_json TEXT,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_specpilot_docs_project ON specpilot_documents(project_id);
+CREATE INDEX IF NOT EXISTS idx_specpilot_chunks_doc ON specpilot_chunks(document_id);
+`);
+
+(() => {
+  const addCol = (table, name, defSql) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (cols.some((c) => c.name === name)) return;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${defSql}`);
+  };
+  addCol('specpilot_documents', 'spec_version_id', 'spec_version_id INTEGER REFERENCES spec_versions(id) ON DELETE CASCADE');
+})();
+
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS specpilot_documents_spec_version_unique ON specpilot_documents(spec_version_id) WHERE spec_version_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_specpilot_docs_spec_version ON specpilot_documents(spec_version_id);
+CREATE INDEX IF NOT EXISTS idx_spec_artifact_src ON spec_artifact_links(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_spec_artifact_tgt ON spec_artifact_links(target_type, target_id);
+`);
+
+(() => {
+  const fts = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='specpilot_chunk_fts'`)
+    .get();
+  if (!fts) {
+    db.exec(`
+CREATE VIRTUAL TABLE specpilot_chunk_fts USING fts5(
+  chunk_id UNINDEXED,
+  document_id UNINDEXED,
+  body,
+  tokenize='porter unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS trg_specpilot_chunks_ai AFTER INSERT ON specpilot_chunks BEGIN
+  INSERT INTO specpilot_chunk_fts(chunk_id, document_id, body) VALUES (new.id, new.document_id, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_specpilot_chunks_ad AFTER DELETE ON specpilot_chunks BEGIN
+  DELETE FROM specpilot_chunk_fts WHERE chunk_id = old.id;
+END;
+CREATE TRIGGER IF NOT EXISTS trg_specpilot_chunks_au AFTER UPDATE ON specpilot_chunks BEGIN
+  DELETE FROM specpilot_chunk_fts WHERE chunk_id = old.id;
+  INSERT INTO specpilot_chunk_fts(chunk_id, document_id, body) VALUES (new.id, new.document_id, new.text);
+END;
+`);
+  }
+})();
+
 export function nextPublicId(prefix, counterKey) {
   const run = db.transaction(() => {
     db.prepare('UPDATE counters SET value = value + 1 WHERE key = ?').run(counterKey);

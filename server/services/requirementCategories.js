@@ -4,6 +4,15 @@
  * - Nested: array of string | { name: string, children?: (string | CategoryNode)[] }
  * Stored values in DB are full paths: "Parent / Child" (space slash space).
  */
+export function validateRequirementCategory(category, cfg) {
+  const allowed = flattenAllowedCategoryValues(cfg.requirementCategories || []);
+  if (!category || typeof category !== 'string') return 'category is required';
+  const t = category.trim();
+  if (!allowed.length) return null;
+  if (!allowed.includes(t)) return `category must be one of: ${allowed.join(', ')}`;
+  return null;
+}
+
 export function flattenAllowedCategoryValues(nodes, prefix = '') {
   if (!Array.isArray(nodes)) return [];
   const out = [];

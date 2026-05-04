@@ -11,6 +11,7 @@ Hoverboard is a web application for **hardware/software verification–oriented 
 | Area | Capabilities |
 | --- | --- |
 | **Specifications** | Upload PDF/Word; versioned ingests; change summaries between versions; read-only in-app viewing |
+| **SpecPilot** | Optional LLM Q&A over indexed spec text — setup in **[docs/spec_pilot.md](docs/spec_pilot.md)** (`OPENAI_API_KEY`, Reindex per version) |
 | **DRs / VRs** | Stable public IDs (e.g. `DR-00001`, `VR-00001`); categories, ASIL, linking many-to-many |
 | **Traceability** | Artifact graph (DR/VR as artifacts), links between artifacts, **suspect** links when upstream changes |
 | **Quality & CI** | Regression directory ingest, signature-style binning, coverage ingestion, VR hit detection from logs |
@@ -76,6 +77,7 @@ For production without installing Node on the server, use **`docker compose`** �
 - **Project hub** (`/projects`): Lists projects you can access; **Create project** adds a new workspace. The header offers **Open projects** and **Create project** while you work inside a project so you can return here anytime.
 - **Project workspace**: Sidebar navigation — Dashboard, Specs, DRs, VRs, Signatures, Regressions, ISO 26262, Audit, Settings. **Admin** (system administrators) appears in the header for administration pages scoped to the current project route.
 - **Specs**: Upload and version documents; create DRs from selections.
+- **SpecPilot** (when enabled): Ask natural-language questions over indexed specs — see **[docs/spec_pilot.md](docs/spec_pilot.md)**.
 - **DRs / VRs**: Tables and detail flows; traceability and stale marking when specifications change.
 - **Dashboard**: Metrics and release readiness snapshot.
 
@@ -100,6 +102,7 @@ Full documentation for adopters and administrators:
 | [Comments](docs/comments.md) | Collaboration on artifacts |
 | [Audit & baselines](docs/audit_and_baselines.md) | Compliance-oriented features |
 | [Configuration](docs/configuration.md) | Full config schema |
+| [SpecPilot](docs/spec_pilot.md) | LLM Q&A over specs (`OPENAI_API_KEY`, Reindex) |
 | [Troubleshooting](docs/troubleshooting.md) | Common errors and fixes |
 | [Architecture](docs/architecture.md) | System design and data model |
 

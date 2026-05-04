@@ -19,6 +19,8 @@ services:
       PORT: "5179"
       HOVERBOARD_DB_PATH: /data/hoverboard.sqlite
       HOVERBOARD_UPLOADS_DIR: /data/uploads
+      # Optional: SpecPilot LLM (see docs/spec_pilot.md)
+      # OPENAI_API_KEY: sk-...
       # Optional: alternate config file inside the container (mount your own file below)
       # HOVERBOARD_CONFIG: /config/hoverboard.config.json
     volumes:

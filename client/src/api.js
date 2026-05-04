@@ -171,6 +171,7 @@ export const api = {
   adminSyncedGroups: () => json('/api/admin/synced-groups'),
   adminPatchUser: (id, body) =>
     json(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminDeleteUser: (id) => json(`/api/admin/users/${id}`, { method: 'DELETE' }),
   adminRoles: (id, body) =>
     json(`/api/admin/users/${id}/roles`, { method: 'POST', body: JSON.stringify(body) }),
   adminAudit: (limit) => json(`/api/admin/audit-events${qsp({ limit })}`),
@@ -213,4 +214,31 @@ export const api = {
     }),
   evidenceDownloadUrl: (projectId, evidenceId) =>
     `/api/projects/${projectId}/evidence/${evidenceId}/download`,
+
+  specpilotSpecVersions: () => json('/api/specpilot/spec-versions'),
+  specpilotReindexSpecVersion: async (specVersionId) => {
+    const r = await fetch(`/api/specpilot/spec-versions/${encodeURIComponent(specVersionId)}/reindex`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: projectHeaders(),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      const e = new Error(err.error || r.statusText);
+      e.status = r.status;
+      throw e;
+    }
+    return r.json();
+  },
+  specpilotChunk: (chunkId) => json(`/api/specpilot/chunks/${encodeURIComponent(chunkId)}`),
+  specpilotAsk: (body) => json('/api/specpilot/ask', { method: 'POST', body: JSON.stringify(body) }),
+  specpilotCreateDr: (body) =>
+    json('/api/specpilot/actions/create-dr', { method: 'POST', body: JSON.stringify(body) }),
+  specpilotCreateVr: (body) =>
+    json('/api/specpilot/actions/create-vr', { method: 'POST', body: JSON.stringify(body) }),
+  specpilotLinkArtifact: (body) =>
+    json('/api/specpilot/actions/link-existing-artifact', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 };

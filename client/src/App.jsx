@@ -18,6 +18,7 @@ import ProjectSelection from './pages/ProjectSelection.jsx';
 import ProjectCreate from './pages/ProjectCreate.jsx';
 import Unauthorized from './pages/Unauthorized.jsx';
 import Audit from './pages/Audit.jsx';
+import SpecPilot from './pages/SpecPilot.jsx';
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="artifacts/:artifactId" element={<ArtifactDetail />} />
           <Route path="specs" element={<Specs />} />
+          <Route path="specpilot" element={<SpecPilot />} />
           <Route path="drs" element={<DRs />} />
           <Route path="vrs" element={<VRs />} />
           <Route path="signatures" element={<Signatures />} />

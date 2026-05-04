@@ -271,6 +271,9 @@ export default function ProjectLayout() {
             <NavLink to={projectPath(pid, 'specs')} className={sbClass}>
               Specs
             </NavLink>
+            <NavLink to={projectPath(pid, 'specpilot')} className={sbClass}>
+              SpecPilot
+            </NavLink>
             <NavLink to={projectPath(pid, 'drs')} className={sbClass}>
               Design requirements
             </NavLink>

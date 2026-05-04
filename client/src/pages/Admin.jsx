@@ -157,6 +157,14 @@ export default function Admin() {
     .trim()
     .toLowerCase();
 
+  function canDeleteUserRow(u) {
+    const em = String(u.email || '').toLowerCase();
+    if (em === 'system@hoverboard.internal') return false;
+    if (builtinAdminEmail && em === builtinAdminEmail) return false;
+    if (user?.id != null && Number(user.id) === Number(u.id)) return false;
+    return true;
+  }
+
   return (
     <>
       <h1 className="page-title">Administration</h1>
@@ -361,6 +369,7 @@ export default function Admin() {
                   <th>Title</th>
                   <th>Team</th>
                   <th>Manager</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -462,6 +471,37 @@ export default function Admin() {
                             </option>
                           ))}
                       </select>
+                    </td>
+                    <td>
+                      {canDeleteUserRow(u) ? (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          style={{ fontSize: '0.82rem', color: 'var(--danger, #f87171)' }}
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                `Delete user ${u.email}? This permanently removes the account from the database. Content they authored is reassigned to the internal system user.`
+                              )
+                            ) {
+                              return;
+                            }
+                            setMsg('');
+                            setError('');
+                            try {
+                              await api.adminDeleteUser(u.id);
+                              setMsg(`Deleted ${u.email}.`);
+                              setUsers(await api.adminUsers());
+                            } catch (e) {
+                              setError(e.message);
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

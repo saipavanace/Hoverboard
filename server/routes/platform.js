@@ -5,6 +5,7 @@ import { authDisabled } from '../middleware/auth.js';
 import { can, hasGlobalRole, GLOBAL_ADMIN } from '../middleware/rbac.js';
 import { hashPassword } from '../services/password.js';
 import { isBuiltinAdminEmail } from '../services/builtinAdmin.js';
+import { getInternalSystemUserId, reassignReferencesBeforeUserDelete } from '../services/userDelete.js';
 import { normalizeUsername, isReservedUsername } from '../services/username.js';
 import { evaluateSignoff, computeApprovalSignature } from '../services/signoffEngine.js';
 import { requireProjectPermission } from '../middleware/permissions.js';
@@ -480,6 +481,52 @@ router.patch('/admin/users/:id', requireSystemAdmin, (req, res) => {
     entityType: 'USER',
     entityId: String(id),
     detail: { enabled, display_name },
+    mirrorLegacy: true,
+  });
+  res.json({ ok: true });
+});
+
+router.delete('/admin/users/:id', requireSystemAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'invalid id' });
+  }
+  const row = db.prepare(`SELECT id, email FROM users WHERE id = ?`).get(id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+
+  const email = String(row.email || '').trim().toLowerCase();
+  if (email === 'system@hoverboard.internal') {
+    return res.status(403).json({ error: 'internal system user cannot be deleted' });
+  }
+  if (isBuiltinAdminEmail(row.email)) {
+    return res.status(403).json({ error: 'built-in administrator cannot be deleted' });
+  }
+  if (req.authUser?.id && Number(req.authUser.id) === id) {
+    return res.status(400).json({ error: 'cannot delete your own account while signed in' });
+  }
+
+  const systemId = getInternalSystemUserId();
+  if (!systemId) {
+    return res.status(500).json({ error: 'internal system user row missing; cannot delete users' });
+  }
+
+  try {
+    const tx = db.transaction(() => {
+      reassignReferencesBeforeUserDelete(id, systemId);
+      db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
+    });
+    tx();
+  } catch (e) {
+    console.error('admin delete user', e);
+    return res.status(500).json({ error: String(e.message || e) || 'delete failed' });
+  }
+
+  appendAuditEvent({
+    actorUserId: req.authUser?.id,
+    action: 'ADMIN_USER_DELETE',
+    entityType: 'USER',
+    entityId: String(id),
+    detail: { email },
     mirrorLegacy: true,
   });
   res.json({ ok: true });

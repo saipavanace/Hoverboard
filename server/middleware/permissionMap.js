@@ -24,4 +24,5 @@ export const ROUTE_PERMISSION_MAP = [
   ['PATCH /api/projects/:projectId/teams/:id', 'admin_teams'],
   ['GET /api/admin/users', 'system_admin (or auth disabled)'],
   ['PATCH /api/admin/users/:id', 'system_admin (or auth disabled)'],
+  ['DELETE /api/admin/users/:id', 'system_admin (or auth disabled)'],
 ];

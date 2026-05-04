@@ -62,6 +62,7 @@ See **[configuration.md](configuration.md)** for every key. Auth-related keys li
 | **`HOVERBOARD_CONFIG`** | Path to alternate JSON config file | `<repo>/hoverboard.config.json` |
 | **`HOVERBOARD_AUTH_DISABLED`** | When `true`, disables login gates (development convenience) | unset (`false` behavior from config) |
 | **`NODE_ENV`** | `production` affects cookie `Secure` flag and similar | `development` |
+| **`OPENAI_API_KEY`** | Enables **SpecPilot** grounded Q&A over indexed specs (see **[SpecPilot](spec_pilot.md)**) | unset |
 
 Example:
 

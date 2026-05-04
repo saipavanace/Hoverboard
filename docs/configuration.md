@@ -239,8 +239,24 @@ Password resolution order: **`HOVERBOARD_BUILTIN_ADMIN_PASSWORD`** env → **`au
 
 ---
 
+## SpecPilot (environment variables)
+
+SpecPilot uses **server environment variables** for LLM and embedding APIs — **not** keys in `hoverboard.config.json`. Full walkthrough: **[SpecPilot](spec_pilot.md)**.
+
+| Variable | Role |
+| --- | --- |
+| **`OPENAI_API_KEY`** | **Required** for Ask / grounded answers: OpenAI-compatible API key (chat + embeddings by default). |
+| **`OPENAI_BASE_URL`** | Optional; sets OpenAI-compatible root for `/chat/completions` and `/embeddings`. |
+| **`SPECPILOT_LLM_URL`** | Optional full URL for chat completions (overrides chat URL derived from base). |
+| **`SPECPILOT_LLM_MODEL`** | Chat model id (default `gpt-4o-mini`). |
+| **`SPECPILOT_EMBEDDING_URL`** / **`SPECPILOT_EMBEDDING_API_KEY`** / **`SPECPILOT_EMBEDDING_MODEL`** | Optional overrides for embeddings hybrid search. |
+| **`SPECPILOT_TOP_K`**, **`SPECPILOT_MAX_CONTEXT_CHARS`**, **`SPECPILOT_VECTOR_WEIGHT`**, **`SPECPILOT_KEYWORD_WEIGHT`** | Optional tuning. |
+
+---
+
 ## Related documentation
 
 - **[Authentication](authentication.md)** — OIDC setup walkthroughs.
 - **[Installation](installation.md)** — Environment variables.
+- **[SpecPilot](spec_pilot.md)** — Feature overview and setup.
 - **[Troubleshooting](troubleshooting.md)** — Config mistakes.

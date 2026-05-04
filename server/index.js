@@ -49,6 +49,7 @@ import authRoutes from './routes/auth.js';
 import platformRoutes from './routes/platform.js';
 import evidenceRoutes from './routes/evidence.js';
 import teamsRoutes from './routes/teams.js';
+import specpilotRoutes from './routes/specpilot.js';
 import {
   requireListAccess,
   requireProjectPermission,
@@ -66,6 +67,7 @@ import {
 import {
   flattenAllowedCategoryValues,
   sqlCategoryBranchClause,
+  validateRequirementCategory,
 } from './services/requirementCategories.js';
 
 function defaultProjectId() {
@@ -92,15 +94,6 @@ function parseLabelsJson(s) {
   } catch {
     return [];
   }
-}
-
-function validateRequirementCategory(category, cfg) {
-  const allowed = flattenAllowedCategoryValues(cfg.requirementCategories || []);
-  if (!category || typeof category !== 'string') return 'category is required';
-  const t = category.trim();
-  if (!allowed.length) return null;
-  if (!allowed.includes(t)) return `category must be one of: ${allowed.join(', ')}`;
-  return null;
 }
 
 function mapVrToClient(v, extra = {}) {
@@ -159,6 +152,7 @@ app.use('/api', requireApiAuth);
 app.use('/api', platformRoutes);
 app.use('/api', evidenceRoutes);
 app.use('/api', teamsRoutes);
+app.use('/api', specpilotRoutes);
 
 const upload = multer({ dest: uploadsDir });
 /** Log/ZIP batches for regression sync (larger limits than single-doc upload). */
