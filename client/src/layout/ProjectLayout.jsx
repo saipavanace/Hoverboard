@@ -1,5 +1,5 @@
-import { NavLink, Outlet, Link, useNavigate, useParams } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { NavLink, Outlet, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useTheme } from '../theme/ThemeContext.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
@@ -15,6 +15,8 @@ export default function ProjectLayout() {
   const { projectId: paramId } = useParams();
   const pid = Number(paramId);
   const navigate = useNavigate();
+  const location = useLocation();
+  const mainScrollRef = useRef(null);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [cfg, setCfg] = useState(null);
@@ -33,6 +35,11 @@ export default function ProjectLayout() {
     }
     setProjectId(pid);
   }, [pid, setProjectId, navigate]);
+
+  /** Inner scroll container — reset to top when switching workspace tabs */
+  useLayoutEffect(() => {
+    mainScrollRef.current?.scrollTo(0, 0);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (projLoading) return;
@@ -57,7 +64,21 @@ export default function ProjectLayout() {
   return (
     <div className="shell project-shell">
       <style>{`
-        .project-shell { min-height: 100%; display: flex; flex-direction: column; }
+        /* Lock shell to viewport: header + sidebar stay put; only main content scrolls */
+        .project-shell {
+          height: 100dvh;
+          max-height: 100dvh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          box-sizing: border-box;
+        }
+        @supports not (height: 100dvh) {
+          .project-shell {
+            height: 100vh;
+            max-height: 100vh;
+          }
+        }
         header.proj-header {
           display: flex; align-items: center; justify-content: space-between;
           gap: 0.75rem; flex-wrap: wrap;
@@ -65,7 +86,8 @@ export default function ProjectLayout() {
           border-bottom: 1px solid var(--border);
           background: color-mix(in srgb, var(--surface) 92%, transparent);
           backdrop-filter: blur(12px);
-          position: sticky; top: 0; z-index: 30;
+          flex-shrink: 0;
+          z-index: 30;
         }
         .proj-brand { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
         .proj-brand h1 { margin: 0; font-size: 1.1rem; font-weight: 700; letter-spacing: -0.03em; }
@@ -82,11 +104,14 @@ export default function ProjectLayout() {
           font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;
         }
         .proj-body {
-          display: flex; flex: 1;
+          display: flex;
+          flex: 1;
+          min-height: 0;
           width: 100%;
           max-width: 1440px;
           margin: 0 auto;
           align-items: stretch;
+          overflow: hidden;
         }
         aside.proj-sidebar {
           width: 240px;
@@ -97,6 +122,8 @@ export default function ProjectLayout() {
           display: flex;
           flex-direction: column;
           gap: 1rem;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
         }
         aside.proj-sidebar .nav-section-label {
           font-size: 0.68rem;
@@ -109,6 +136,9 @@ export default function ProjectLayout() {
         main.proj-main {
           flex: 1;
           min-width: 0;
+          min-height: 0;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
           /* Fixed horizontal inset — clamp() + scrollbar toggling made tab-to-tab alignment feel inconsistent */
           padding: 1.25rem 1.25rem 2.5rem;
           box-sizing: border-box;
@@ -308,7 +338,7 @@ export default function ProjectLayout() {
           </nav>
         </aside>
 
-        <main className="proj-main">
+        <main ref={mainScrollRef} className="proj-main">
           <Outlet />
         </main>
       </div>
