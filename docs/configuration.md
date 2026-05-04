@@ -99,6 +99,10 @@ Failure lines are **normalized** (digits → `#`, whitespace collapsed), then gr
 - **Ingest:** Uses **`regressionSignatureSimilarityThreshold`** from config after updating **`regression_failure_lines`**.
 - **API:** **`GET /api/regressions/signatures?similarity=<0..1>`** (alias **`threshold`**) overrides the default for that response. Response includes **`similarityThreshold`**, **`similarityThresholdPct`** (0–100), **`fuzzyView`**, and **`legacySignatureCluster`** when clustering used stored signature rows only.
 
+### Regression ↔ requirement links (`regression_signature_requirements`)
+
+On each ingest, the server scans **VR / SR / CR / AR** tokens (same token rules as VR log coverage) **within a line window around each parser-matched failure** (per log file). Bare **`POST /api/regressions/ingest`** lines only scan IDs **on the failure line itself**. Rows are accumulated per **`(project_id, signature_key, requirement_public_id)`**. **`GET /api/regressions/signatures`** and **`GET /api/regressions/signatures/:key`** include **`linkedRequirements`** for triage (weak correlation — IDs need not be on the FAIL line).
+
 ---
 
 ## Auth configuration (`auth`)

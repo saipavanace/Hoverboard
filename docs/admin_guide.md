@@ -152,7 +152,7 @@ The **Data mirror** tab shows **one JSON document** that reflects how Hoverboard
 
 ### Canonical data vs this snapshot
 
-- **Source of truth** is always the **normal relational tables** (`drs`, `vrs`, `regression_failure_lines`, `regression_signatures`, …). The JSON is a **read-only export / inspection view**, not a parallel database.
+- **Source of truth** is always the **normal relational tables** (`drs`, `vrs`, `regression_failure_lines`, `regression_signature_requirements`, `regression_signatures`, …). The JSON is a **read-only export / inspection view**, not a parallel database.
 
 ### API
 

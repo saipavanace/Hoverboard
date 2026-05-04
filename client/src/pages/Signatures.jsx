@@ -44,12 +44,7 @@ export default function Signatures() {
       <h1 className="page-title">Signature trends</h1>
 
       <div className="card" style={{ marginBottom: '1rem', padding: '1rem 1.1rem' }}>
-        <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Similarity (normalized edit distance)</div>
-        <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.65rem', maxWidth: 720 }}>
-          Scale 0–100: max allowed difference between normalized failure lines (after digit folding). 0 = only
-          identical normalized text merges; 100 = one bucket for all lines. Adjust live to explore clusters; the
-          default on ingest comes from Settings → Regression signatures.
-        </p>
+        <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Similarity (normalized edit distance)</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.85rem', color: 'var(--muted)', minWidth: 48 }}>0</span>
           <input
@@ -78,6 +73,7 @@ export default function Signatures() {
               <th>Title</th>
               <th>State</th>
               <th>Total</th>
+              <th>Req IDs (log)</th>
               <th />
             </tr>
           </thead>
@@ -93,6 +89,21 @@ export default function Signatures() {
                   <span className="badge badge-open">{r.state}</span>
                 </td>
                 <td>{r.total}</td>
+                <td style={{ fontSize: '0.78rem', maxWidth: 220 }}>
+                  {(r.linkedRequirements || []).length ? (
+                    <span title={(r.linkedRequirements || []).map((x) => x.public_id).join(', ')}>
+                      {(r.linkedRequirements || [])
+                        .slice(0, 4)
+                        .map((x) => x.public_id)
+                        .join(', ')}
+                      {(r.linkedRequirements || []).length > 4
+                        ? ` +${(r.linkedRequirements || []).length - 4}`
+                        : ''}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--muted)' }}>—</span>
+                  )}
+                </td>
                 <td>
                   <Link
                     to={projectPath(Number(projectId), `signatures/${encodeURIComponent(r.signature_key)}`)}

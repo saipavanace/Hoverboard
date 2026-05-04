@@ -1,4 +1,5 @@
 INFO: regression started
+UVM_INFO @ 0: [TEST] (tb.uvm) VR-00100 context before UART failure
 FAIL: uart_timeout waiting for TX empty
 FAIL: uart_timeout waiting for TX empty
 ERROR sim: assertion failed at tb_pcie.sv:120

@@ -471,6 +471,16 @@ CREATE TABLE IF NOT EXISTS regression_failure_lines (
   sample_raw TEXT,
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS regression_signature_requirements (
+  project_id INTEGER NOT NULL,
+  signature_key TEXT NOT NULL,
+  requirement_public_id TEXT NOT NULL,
+  link_count INTEGER NOT NULL DEFAULT 1,
+  last_seen_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (project_id, signature_key, requirement_public_id),
+  FOREIGN KEY (project_id) REFERENCES projects(id)
+);
 `);
 
 export function nextPublicId(prefix, counterKey) {

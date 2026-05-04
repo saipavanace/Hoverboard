@@ -32,15 +32,20 @@ export function classifyLine(line, patterns) {
   return null;
 }
 
-export function scanLogText(text, patterns, opts = {}) {
+/** Failure lines with 0-based line index (for requirement-ID context windows). */
+export function scanLogTextWithLineIndices(text, patterns, opts = {}) {
   const limit = opts.maxLines ?? 5000;
   const lines = String(text || '').split(/\r?\n/);
   const failures = [];
   for (let i = 0; i < lines.length && i < limit; i++) {
     const line = lines[i];
-    if (classifyLine(line, patterns)) failures.push(line.trim().slice(0, 400));
+    if (classifyLine(line, patterns)) failures.push({ line: line.trim().slice(0, 400), lineIndex: i });
   }
   return failures;
+}
+
+export function scanLogText(text, patterns, opts = {}) {
+  return scanLogTextWithLineIndices(text, patterns, opts).map((x) => x.line);
 }
 
 export function readLogFileSlice(filePath, maxBytes = 5 * 1024 * 1024) {
@@ -79,6 +84,8 @@ export function scanRegressionFromTexts(entries, opts = {}) {
     filesScanned: filesScanned.length,
     failures: failures.length,
     failureLines: failures,
+    /** Same files as input — use with requirement-link extraction. */
+    logEntries: entries,
     bins,
   };
 }

@@ -24,6 +24,7 @@ const EXPORT_TABLES_INSERT_ORDER = [
   'vr_coverage_files',
   'iso_evidence',
   'regression_failure_lines',
+  'regression_signature_requirements',
   'regression_signatures',
   'regression_activity',
   'coverage_metrics',

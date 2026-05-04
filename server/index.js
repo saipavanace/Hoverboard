@@ -22,6 +22,11 @@ import { computeReleaseReadiness } from './services/releaseProjection.js';
 import { loadConfig, saveConfig, sanitizeConfigForPublic } from './config.js';
 import { getBuiltinAdminEmail } from './services/builtinAdmin.js';
 import { scanRegressionDirectory, scanRegressionFromTexts } from './services/regressionAdapter.js';
+import {
+  collectRegressionRequirementPairs,
+  collectRegressionRequirementPairsFromBareLines,
+  mergeRegressionRequirementLinks,
+} from './services/regressionRequirementLinks.js';
 import { scanCoverageDirectory, scanCoverageFromTexts } from './services/coverageAdapter.js';
 import {
   scanDirectory as scanVrDirectory,
@@ -229,6 +234,21 @@ function regressionBinsFromDb(threshold) {
 function defaultSimilarityThreshold() {
   const cfg = loadConfig();
   return clampSimilarityThreshold(cfg.regressionSignatureSimilarityThreshold, 0.12);
+}
+
+/** Correlate parser-matched failures with VR/SR/CR/AR tokens (log window or bare line). */
+function applyRegressionRequirementLinksFromIngest(projectId, entries, rawLines) {
+  const cfg = loadConfig();
+  if (entries?.length) {
+    const map = collectRegressionRequirementPairs(entries, {
+      patterns: cfg.regressionParsers,
+      vrLogRegex: cfg.vrLogRegex,
+    });
+    mergeRegressionRequirementLinks(db, projectId, map, 1);
+  } else if (rawLines?.length) {
+    const map = collectRegressionRequirementPairsFromBareLines(rawLines, cfg.vrLogRegex);
+    mergeRegressionRequirementLinks(db, projectId, map, 1);
+  }
 }
 
 function recordVrCoverageScanResult(result, sourcePath, projectId) {
@@ -1471,6 +1491,7 @@ app.post(
       ? lines.map((l) => String(l))
       : [];
   recordFailureLineBatch(raw);
+  applyRegressionRequirementLinksFromIngest(req.resolvedProjectId, null, raw);
   const thr = defaultSimilarityThreshold();
   const bins = regressionBinsFromDb(thr);
   const inserted = persistRegressionBins(bins, 'ingest', (b) => b.sample);
@@ -1526,6 +1547,33 @@ app.get(
       legacySignatureCluster: lineRows.length === 0 && sigRows.length > 0,
     };
   });
+
+  const pid = req.resolvedProjectId;
+  const sigKeys = out.map((r) => r.signature_key);
+  if (sigKeys.length && pid != null) {
+    const ph = sigKeys.map(() => '?').join(',');
+    const linkRows = db
+      .prepare(
+        `
+      SELECT signature_key, requirement_public_id, SUM(link_count) AS link_count
+      FROM regression_signature_requirements
+      WHERE project_id = ? AND signature_key IN (${ph})
+      GROUP BY signature_key, requirement_public_id
+    `
+      )
+      .all(pid, ...sigKeys);
+    const bySig = new Map();
+    for (const lr of linkRows) {
+      if (!bySig.has(lr.signature_key)) bySig.set(lr.signature_key, []);
+      bySig.get(lr.signature_key).push({
+        public_id: lr.requirement_public_id,
+        link_count: lr.link_count,
+      });
+    }
+    for (const row of out) {
+      row.linkedRequirements = bySig.get(row.signature_key) || [];
+    }
+  }
   res.json(out);
   }
 );
@@ -1544,7 +1592,20 @@ app.get(
   const acts = db
     .prepare(`SELECT * FROM regression_activity WHERE signature_id = ? ORDER BY id DESC LIMIT 100`)
     .all(row.id);
-  res.json({ ...row, activity: acts });
+  const pid = req.resolvedProjectId;
+  const linkedRequirements = db
+    .prepare(
+      `
+    SELECT r.requirement_public_id, r.link_count, r.last_seen_at,
+           v.id AS vr_id, v.title AS vr_title, v.vr_kind, v.status AS vr_status
+    FROM regression_signature_requirements r
+    LEFT JOIN vrs v ON v.public_id = r.requirement_public_id AND v.project_id = r.project_id
+    WHERE r.signature_key = ? AND r.project_id = ?
+    ORDER BY r.link_count DESC, r.requirement_public_id
+  `
+    )
+    .all(row.signature_key, pid);
+  res.json({ ...row, activity: acts, linkedRequirements });
   }
 );
 
@@ -1565,11 +1626,12 @@ app.post(
     similarityThreshold: thr,
   });
   recordFailureLineBatch(result.failureLines);
+  applyRegressionRequirementLinksFromIngest(req.resolvedProjectId, result.logEntries || [], null);
   const bins = regressionBinsFromDb(thr);
   const inserted = persistRegressionBins(bins, 'directory ingest', () => dir);
   db.prepare(
     `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('REGRESSION', ?, 'INGEST_DIR', ?)`
-  )  .run(dir, JSON.stringify({ filesScanned: result.filesScanned, failures: result.failures, bins: inserted }));
+  ).run(dir, JSON.stringify({ filesScanned: result.filesScanned, failures: result.failures, bins: inserted }));
   res.json({ ok: true, ...result, bins, signaturesUpserted: inserted });
   }
 );
@@ -1597,6 +1659,7 @@ app.post(
         { patterns: cfg.regressionParsers, sourceLabel: 'upload', similarityThreshold: thr }
       );
       recordFailureLineBatch(result.failureLines);
+      applyRegressionRequirementLinksFromIngest(req.resolvedProjectId, result.logEntries || [], null);
       const bins = regressionBinsFromDb(thr);
       const inserted = persistRegressionBins(bins, 'upload ingest', () => 'upload');
       db.prepare(
@@ -1936,12 +1999,13 @@ app.post(
   requireProjectPermission('demo_seed', resolveWithDefaultProject),
   (_req, res) => {
   const lines = [
-    'FAIL: uart_timeout waiting for TX empty',
+    'FAIL: uart_timeout waiting for VR-00042 TX empty',
     'FAIL: uart_timeout waiting for TX empty',
     'ERROR sim: assertion failed at tb_pcie.sv:120',
     'panic test timed out after 100us',
   ];
   recordFailureLineBatch(lines);
+  applyRegressionRequirementLinksFromIngest(req.resolvedProjectId, null, lines);
   const thr = defaultSimilarityThreshold();
   const bins = regressionBinsFromDb(thr);
   const upsert = db.prepare(`

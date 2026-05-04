@@ -65,6 +65,52 @@ export default function Diagnostics() {
           </div>
 
           <div className="card" style={{ marginBottom: '1rem' }}>
+            <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>
+              Requirements seen near this failure (log-derived)
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.65rem' }}>
+              VR/SR/CR/AR IDs extracted from the same log window as parser-matched failure lines. Links accumulate on
+              ingest; IDs may appear on nearby passing lines — triage hint only.
+            </p>
+            {(sig.linkedRequirements || []).length ? (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Kind</th>
+                      <th>Title</th>
+                      <th>Hits</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(sig.linkedRequirements || []).map((l) => (
+                      <tr key={l.requirement_public_id}>
+                        <td style={{ fontFamily: 'var(--mono)', fontSize: '0.82rem' }}>
+                          {l.requirement_public_id}
+                        </td>
+                        <td>{l.vr_kind || '—'}</td>
+                        <td>{l.vr_title || '—'}</td>
+                        <td>{l.link_count}</td>
+                        <td>
+                          <Link
+                            to={`${projectPath(Number(projectId), 'vrs')}?q=${encodeURIComponent(l.requirement_public_id)}`}
+                          >
+                            VR list
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ color: 'var(--muted)' }}>No requirement IDs correlated with this signature yet.</p>
+            )}
+          </div>
+
+          <div className="card" style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Last 30 days (illustrative)</div>
             <div style={{ width: '100%', height: 260 }}>
               <ResponsiveContainer>
