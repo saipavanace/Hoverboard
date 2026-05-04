@@ -6,19 +6,68 @@ import { api } from '../api.js';
 export default function Signatures() {
   const { projectId } = useParams();
   const [rows, setRows] = useState([]);
-
-  async function refresh() {
-    const data = await api.signatures();
-    setRows(data);
-  }
+  const [sliderPct, setSliderPct] = useState(null);
 
   useEffect(() => {
-    refresh().catch(() => setRows([]));
+    let cancelled = false;
+    api
+      .config()
+      .then((c) => {
+        const t = c.regressionSignatureSimilarityThreshold;
+        const pct =
+          typeof t === 'number' && !Number.isNaN(t)
+            ? Math.round(Math.min(1, Math.max(0, t)) * 100)
+            : 12;
+        if (!cancelled) setSliderPct(pct);
+      })
+      .catch(() => {
+        if (!cancelled) setSliderPct(12);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (sliderPct === null) return;
+    const thr = sliderPct / 100;
+    api
+      .signatures({ similarity: thr })
+      .then(setRows)
+      .catch(() => setRows([]));
+  }, [sliderPct]);
+
+  const similarityLabel = sliderPct === null ? '…' : String(sliderPct);
 
   return (
     <>
       <h1 className="page-title">Signature trends</h1>
+
+      <div className="card" style={{ marginBottom: '1rem', padding: '1rem 1.1rem' }}>
+        <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Similarity (normalized edit distance)</div>
+        <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.65rem', maxWidth: 720 }}>
+          Scale 0–100: max allowed difference between normalized failure lines (after digit folding). 0 = only
+          identical normalized text merges; 100 = one bucket for all lines. Adjust live to explore clusters; the
+          default on ingest comes from Settings → Regression signatures.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--muted)', minWidth: 48 }}>0</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={sliderPct ?? 0}
+            disabled={sliderPct === null}
+            onChange={(e) => setSliderPct(Number(e.target.value))}
+            aria-label="Signature similarity threshold 0 to 100"
+            style={{ flex: '1 1 220px', maxWidth: 420 }}
+          />
+          <span style={{ fontSize: '0.85rem', color: 'var(--muted)', minWidth: 48 }}>100</span>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: '0.9rem' }} title="Threshold (0–100)">
+            {similarityLabel}
+          </span>
+        </div>
+      </div>
 
       <div className="table-wrap">
         <table>
@@ -34,7 +83,7 @@ export default function Signatures() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.signature_key}>
                 <td style={{ width: 120 }}>
                   <Spark value={r.total || 0} />
                 </td>

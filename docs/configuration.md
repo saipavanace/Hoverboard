@@ -31,6 +31,7 @@ Hoverboard can expose a **read-only JSON mirror** of SQLite rows plus merged con
 | **`releaseMetricWeights`** | object | Weights for combined readiness score (numeric; should sum ~1) |
 | **`branding`** | object | `accent` (hex color), `logoUrl` (optional string\|null) |
 | **`regressionParsers`** | `{ name, regex }[]` | Line classifiers for regression ingest |
+| **`regressionSignatureSimilarityThreshold`** | number | **0–1** in JSON (default **0.12**). Max **normalized** edit distance for merging failure lines on ingest and for **`GET /api/regressions/signatures`** when no `similarity` query is passed. The Settings page and Signatures slider surface the same value as **0–100** (e.g. **12** = **0.12**). |
 | **`coverageRegex`** | object | See below |
 | **`vrLogRegex`** | string | Regex to capture VR public IDs from log lines |
 | **`iso26262Enabled`** | boolean | **`false`** (default) — ISO 26262 workspace, project **Audit** nav, and `/api/iso/*` are off. Set **`true`** to enable them (opt-in) |
@@ -87,6 +88,16 @@ JSON files with keys like `functional_coverage` / `fcov` may be auto-detected by
 ## `regressionParsers`
 
 Each entry: **`{ "name": "fail", "regex": "FAIL\\b" }`**. Lines matching any parser count toward failure binning during directory ingest.
+
+---
+
+## Regression signature similarity (`regressionSignatureSimilarityThreshold`)
+
+Failure lines are **normalized** (digits → `#`, whitespace collapsed), then grouped using **normalized Levenshtein distance** in **[0, 1]** (edit count ÷ max length). Two distinct normalized strings merge into one signature when their distance is **≤** the configured threshold (**single-link** clustering; chains can connect distant strings if the threshold is high).
+
+- **Storage:** **`regression_failure_lines`** holds distinct normalized lines and counts as logs are ingested; clustering runs over that table (or, if it is empty, over **`regression_signatures`** titles so older/demo databases still respect the slider).
+- **Ingest:** Uses **`regressionSignatureSimilarityThreshold`** from config after updating **`regression_failure_lines`**.
+- **API:** **`GET /api/regressions/signatures?similarity=<0..1>`** (alias **`threshold`**) overrides the default for that response. Response includes **`similarityThreshold`**, **`similarityThresholdPct`** (0–100), **`fuzzyView`**, and **`legacySignatureCluster`** when clustering used stored signature rows only.
 
 ---
 
@@ -212,7 +223,7 @@ Password resolution order: **`HOVERBOARD_BUILTIN_ADMIN_PASSWORD`** env → **`au
 
 | Topic | Keys / endpoints |
 | --- | --- |
-| Regression directories | **`regressionRoots`**, **`regressionParsers`**; **`POST /api/regressions/ingest-directory`** |
+| Regression directories | **`regressionRoots`**, **`regressionParsers`**, **`regressionSignatureSimilarityThreshold`**; **`POST /api/regressions/ingest-directory`**; **`GET /api/regressions/signatures`** (`similarity` query) |
 | Coverage logs | **`coverageRegex`**; **`POST /api/coverage/ingest-directory`** |
 | VR mentions in logs | **`vrLogRegex`**; **`POST /api/vr-coverage/scan-directory`** |
 

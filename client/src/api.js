@@ -81,7 +81,7 @@ export const api = {
     json(`/api/vrs/${encodeURIComponent(publicId)}`, { method: 'DELETE' }),
   metrics: () => json('/api/metrics'),
   releaseReadiness: () => json('/api/release-readiness'),
-  signatures: () => json('/api/regressions/signatures'),
+  signatures: (params) => json(`/api/regressions/signatures${qsp(params || {})}`),
   signatureDetail: (key) =>
     json(`/api/regressions/signatures/${encodeURIComponent(key)}`),
   ingestRegressions: (body) =>

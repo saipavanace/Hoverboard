@@ -25,6 +25,11 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Reserve space for the vertical scrollbar so content width stays aligned across routes/tabs */
+  scrollbar-gutter: stable;
+}
+
 html,
 body,
 #root {
@@ -121,7 +126,8 @@ table {
 
 th,
 td {
-  padding: 0.65rem 0.85rem;
+  /* Match .card horizontal padding (1.25rem) so tables align with cards on DR/VR pages */
+  padding: 0.65rem 1.25rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
 }
@@ -379,7 +385,7 @@ tr:hover td {
 /* Dashboard — verification requirement coverage panel */
 .dashboard-req-section {
   margin-bottom: 1.25rem;
-  padding: 1.25rem 1.35rem;
+  padding: 1.25rem;
   background: linear-gradient(
     165deg,
     color-mix(in srgb, var(--surface) 96%, var(--accent) 4%) 0%,
@@ -444,7 +450,7 @@ tr:hover td {
   --tile-accent: var(--accent);
   position: relative;
   border-radius: calc(var(--radius) - 2px);
-  padding: 1rem 1rem 0.85rem;
+  padding: 1rem 1.25rem 0.85rem;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 92%, var(--tile-accent) 8%);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;

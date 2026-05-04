@@ -109,7 +109,9 @@ export default function ProjectLayout() {
         main.proj-main {
           flex: 1;
           min-width: 0;
-          padding: 1.25rem clamp(1rem, 2vw, 1.75rem) 2.5rem;
+          /* Fixed horizontal inset — clamp() + scrollbar toggling made tab-to-tab alignment feel inconsistent */
+          padding: 1.25rem 1.25rem 2.5rem;
+          box-sizing: border-box;
         }
         .burger {
           display: none;

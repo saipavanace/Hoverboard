@@ -463,6 +463,16 @@ CREATE TABLE IF NOT EXISTS admin_persisted_snapshot (
 );
 `);
 
+/** Distinct normalized failure lines for fuzzy signature clustering (counts accumulate on ingest). */
+db.exec(`
+CREATE TABLE IF NOT EXISTS regression_failure_lines (
+  normalized_line TEXT PRIMARY KEY,
+  total INTEGER NOT NULL DEFAULT 0,
+  sample_raw TEXT,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
 export function nextPublicId(prefix, counterKey) {
   const run = db.transaction(() => {
     db.prepare('UPDATE counters SET value = value + 1 WHERE key = ?').run(counterKey);

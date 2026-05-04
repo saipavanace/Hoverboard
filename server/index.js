@@ -11,7 +11,13 @@ import { cloneProjectContent } from './services/projectClone.js';
 import { extractText, normalizeForMatch } from './services/textExtract.js';
 import { buildChangeSummary } from './services/changelog.js';
 import { markStaleForNewVersion } from './services/stale.js';
-import { binFailures } from './services/regressionBinning.js';
+import {
+  binFailures,
+  clusterFailureAggregates,
+  clampSimilarityThreshold,
+  aggregateDistinctFailureLines,
+  aggregatesFromStoredSignatures,
+} from './services/regressionBinning.js';
 import { computeReleaseReadiness } from './services/releaseProjection.js';
 import { loadConfig, saveConfig, sanitizeConfigForPublic } from './config.js';
 import { getBuiltinAdminEmail } from './services/builtinAdmin.js';
@@ -183,6 +189,46 @@ function persistRegressionBins(bins, activityAction, getReference) {
     ).run(sig.id, activityAction, getReference(b), 'OPEN');
   }
   return inserted;
+}
+
+function recordFailureLineBatch(rawLines) {
+  if (!Array.isArray(rawLines) || rawLines.length === 0) return;
+  const upsert = db.prepare(`
+    INSERT INTO regression_failure_lines (normalized_line, total, sample_raw)
+    VALUES (@normalized_line, @inc, @sample_raw)
+    ON CONFLICT(normalized_line) DO UPDATE SET
+      total = regression_failure_lines.total + excluded.total,
+      sample_raw = COALESCE(regression_failure_lines.sample_raw, excluded.sample_raw),
+      updated_at = datetime('now')
+  `);
+  const rows = aggregateDistinctFailureLines(rawLines);
+  const run = db.transaction(() => {
+    for (const r of rows) {
+      upsert.run({
+        normalized_line: r.normalized,
+        inc: r.total,
+        sample_raw: r.sample,
+      });
+    }
+  });
+  run();
+}
+
+function regressionBinsFromDb(threshold) {
+  const dbRows = db
+    .prepare(`SELECT normalized_line, total, sample_raw FROM regression_failure_lines`)
+    .all();
+  const rows = dbRows.map((x) => ({
+    normalized: x.normalized_line,
+    total: x.total,
+    sample: x.sample_raw || '',
+  }));
+  return clusterFailureAggregates(rows, threshold);
+}
+
+function defaultSimilarityThreshold() {
+  const cfg = loadConfig();
+  return clampSimilarityThreshold(cfg.regressionSignatureSimilarityThreshold, 0.12);
 }
 
 function recordVrCoverageScanResult(result, sourcePath, projectId) {
@@ -1424,7 +1470,9 @@ app.post(
     : Array.isArray(lines)
       ? lines.map((l) => String(l))
       : [];
-  const bins = binFailures(raw);
+  recordFailureLineBatch(raw);
+  const thr = defaultSimilarityThreshold();
+  const bins = regressionBinsFromDb(thr);
   const inserted = persistRegressionBins(bins, 'ingest', (b) => b.sample);
   res.json({ signaturesUpserted: inserted, bins: bins.length });
   }
@@ -1433,9 +1481,52 @@ app.post(
 app.get(
   '/api/regressions/signatures',
   requireProjectPermission('regressions_read', resolveWithDefaultProject),
-  (_req, res) => {
-  const rows = db.prepare(`SELECT * FROM regression_signatures ORDER BY total DESC`).all();
-  res.json(rows.map((r) => ({ ...r, trend: r.trend_json ? JSON.parse(r.trend_json) : [] })));
+  (req, res) => {
+  const cfg = loadConfig();
+  const def = clampSimilarityThreshold(cfg.regressionSignatureSimilarityThreshold, 0.12);
+  const q = req.query.similarity ?? req.query.threshold;
+  const thr =
+    q !== undefined && String(q).trim() !== '' ? clampSimilarityThreshold(q, def) : def;
+
+  const lineRows = db.prepare(`SELECT normalized_line, total, sample_raw FROM regression_failure_lines`).all();
+  const sigRows = db.prepare(`SELECT * FROM regression_signatures`).all();
+  const metaByKey = new Map(sigRows.map((r) => [r.signature_key, r]));
+
+  const agg =
+    lineRows.length > 0
+      ? lineRows.map((x) => ({
+          normalized: x.normalized_line,
+          total: x.total,
+          sample: x.sample_raw || '',
+        }))
+      : aggregatesFromStoredSignatures(sigRows);
+
+  if (!agg.length) {
+    return res.json([]);
+  }
+
+  const bins = clusterFailureAggregates(agg, thr);
+  const pct = Math.min(100, Math.max(0, Math.round(thr * 100)));
+  const out = bins.map((b) => {
+    const meta = metaByKey.get(b.signature_key);
+    const trend = meta?.trend_json ? JSON.parse(meta.trend_json) : [b.total];
+    return {
+      id: meta?.id ?? null,
+      signature_key: b.signature_key,
+      title: meta?.title ?? b.title,
+      category: meta?.category ?? 'regression',
+      class: meta?.class ?? 'fail',
+      state: meta?.state ?? 'OPEN',
+      trend_json: meta?.trend_json,
+      total: b.total,
+      trend,
+      similarityThreshold: thr,
+      similarityThresholdPct: pct,
+      fuzzyView: lineRows.length > 0,
+      legacySignatureCluster: lineRows.length === 0 && sigRows.length > 0,
+    };
+  });
+  res.json(out);
   }
 );
 
@@ -1468,12 +1559,18 @@ app.post(
     return res.status(404).json({ error: `directory not visible to API: ${dir}` });
   }
   const cfg = loadConfig();
-  const result = scanRegressionDirectory(dir, { patterns: cfg.regressionParsers });
-  const inserted = persistRegressionBins(result.bins, 'directory ingest', () => dir);
+  const thr = defaultSimilarityThreshold();
+  const result = scanRegressionDirectory(dir, {
+    patterns: cfg.regressionParsers,
+    similarityThreshold: thr,
+  });
+  recordFailureLineBatch(result.failureLines);
+  const bins = regressionBinsFromDb(thr);
+  const inserted = persistRegressionBins(bins, 'directory ingest', () => dir);
   db.prepare(
     `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('REGRESSION', ?, 'INGEST_DIR', ?)`
-  ).run(dir, JSON.stringify({ filesScanned: result.filesScanned, failures: result.failures, bins: inserted }));
-  res.json({ ok: true, ...result, signaturesUpserted: inserted });
+  )  .run(dir, JSON.stringify({ filesScanned: result.filesScanned, failures: result.failures, bins: inserted }));
+  res.json({ ok: true, ...result, bins, signaturesUpserted: inserted });
   }
 );
 
@@ -1494,18 +1591,21 @@ app.post(
         return res.status(400).json({ error: 'Add .log/.txt/.out files or a zip containing them.' });
       }
       const cfg = loadConfig();
+      const thr = defaultSimilarityThreshold();
       const result = scanRegressionFromTexts(
         entries.map((e) => ({ label: e.path, text: e.text })),
-        { patterns: cfg.regressionParsers, sourceLabel: 'upload' }
+        { patterns: cfg.regressionParsers, sourceLabel: 'upload', similarityThreshold: thr }
       );
-      const inserted = persistRegressionBins(result.bins, 'upload ingest', () => 'upload');
+      recordFailureLineBatch(result.failureLines);
+      const bins = regressionBinsFromDb(thr);
+      const inserted = persistRegressionBins(bins, 'upload ingest', () => 'upload');
       db.prepare(
         `INSERT INTO audit_log (entity_type, entity_id, action, detail) VALUES ('REGRESSION', ?, 'INGEST_UPLOAD', ?)`
       ).run(
         'upload',
         JSON.stringify({ filesScanned: result.filesScanned, failures: result.failures, bins: inserted })
       );
-      res.json({ ok: true, ...result, signaturesUpserted: inserted });
+      res.json({ ok: true, ...result, bins, signaturesUpserted: inserted });
     } finally {
       unlinkUploadTemps(tempPaths);
     }
@@ -1733,8 +1833,14 @@ app.post(
     if (!fs.existsSync(abs)) continue;
     walkFailures(abs, failures, 40);
   }
-  const bins = binFailures(failures);
-  res.json({ scannedRoots: roots, linesCollected: failures.length, previewBins: bins.slice(0, 10) });
+  const thr = defaultSimilarityThreshold();
+  const bins = binFailures(failures, { similarityThreshold: thr });
+  res.json({
+    scannedRoots: roots,
+    linesCollected: failures.length,
+    similarityThreshold: thr,
+    previewBins: bins.slice(0, 10),
+  });
   }
 );
 
@@ -1835,7 +1941,9 @@ app.post(
     'ERROR sim: assertion failed at tb_pcie.sv:120',
     'panic test timed out after 100us',
   ];
-  const bins = binFailures(lines);
+  recordFailureLineBatch(lines);
+  const thr = defaultSimilarityThreshold();
+  const bins = regressionBinsFromDb(thr);
   const upsert = db.prepare(`
     INSERT INTO regression_signatures (signature_key, title, category, class, state, total, trend_json)
     VALUES (@signature_key, @title, 'test', 'fail', 'OPEN', @total, @trend_json)

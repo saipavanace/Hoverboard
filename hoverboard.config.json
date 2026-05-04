@@ -11,6 +11,7 @@
     { "name": "Category7", "children": ["Sub A", "Sub B"] },
     { "name": "Category8", "children": ["Sub A", "Sub B"] }
   ],
+  "regressionSignatureSimilarityThreshold": 0.12,
   "regressionRoots": [
     "./sample-regressions"
   ],

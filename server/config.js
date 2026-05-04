@@ -40,6 +40,11 @@ const defaults = {
     { name: 'timeout', regex: 'timeout' },
     { name: 'fatal', regex: 'UVM_FATAL' },
   ],
+  /**
+   * Max normalized Levenshtein distance (0–1) for merging regression signatures on ingest.
+   * 0 = exact normalized match only; 1 = single bucket. Signatures UI can override for display.
+   */
+  regressionSignatureSimilarityThreshold: 0.12,
   coverageRegex: {
     functional: [
       'functional\\s*coverage\\s*[:=]\\s*([0-9]+(?:\\.[0-9]+)?)\\s*%?',
@@ -148,6 +153,8 @@ export function loadConfig() {
     requirementCategories: file.requirementCategories ?? defaults.requirementCategories,
     regressionRoots: file.regressionRoots ?? defaults.regressionRoots,
     regressionParsers: file.regressionParsers ?? defaults.regressionParsers,
+    regressionSignatureSimilarityThreshold:
+      file.regressionSignatureSimilarityThreshold ?? defaults.regressionSignatureSimilarityThreshold,
     coverageRegex: { ...defaults.coverageRegex, ...(file.coverageRegex || {}) },
     vrLogRegex: file.vrLogRegex ?? defaults.vrLogRegex,
     releaseMetricWeights: {
@@ -259,6 +266,8 @@ export function saveConfig(partial) {
       ...(partial.releaseMetricWeights || {}),
     },
     branding: { ...current.branding, ...(partial.branding || {}) },
+    regressionSignatureSimilarityThreshold:
+      partial.regressionSignatureSimilarityThreshold ?? current.regressionSignatureSimilarityThreshold,
     notifications: mergeNotificationsForSave(raw, current, partial),
     auth: partial.auth
       ? {

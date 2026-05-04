@@ -62,6 +62,7 @@ export default function Settings() {
   const [notifProjectScope, setNotifProjectScope] = useState('');
   const [testTo, setTestTo] = useState('');
   const [testBusy, setTestBusy] = useState(false);
+  const [regressionSimilarity, setRegressionSimilarity] = useState(12);
 
   const saveJsonConfig = useCallback(async () => {
     try {
@@ -114,6 +115,12 @@ export default function Settings() {
         setEmailsDrStale(emailsDisplayForEvent(subs, 'dr_stale_after_spec'));
         setEmailsVrStale(emailsDisplayForEvent(subs, 'vr_orphan_stale'));
         setNotifProjectScope('');
+        const rs = c.regressionSignatureSimilarityThreshold;
+        setRegressionSimilarity(
+          typeof rs === 'number' && !Number.isNaN(rs)
+            ? Math.round(Math.min(1, Math.max(0, rs)) * 100)
+            : 12
+        );
       })
       .catch(() => setCfg({}));
   }, []);
@@ -378,6 +385,61 @@ export default function Settings() {
               }}
             >
               Save built-in admin
+            </button>
+          </div>
+        </div>
+      )}
+
+      {cfg && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div style={{ fontWeight: 700, marginBottom: '0.65rem' }}>Regression signatures</div>
+          <p style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '0.65rem', maxWidth: 720 }}>
+            Default max normalized edit distance when ingesting logs, as a 0–100 score (same scale as the Signatures
+            page). Higher values merge more failure lines into one signature. The Signatures slider adjusts the list
+            view only.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem', alignItems: 'end' }}>
+            <label>
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Similarity threshold (0–100)</div>
+              <input
+                className="field-input"
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={regressionSimilarity}
+                onChange={(e) => setRegressionSimilarity(Number(e.target.value))}
+                style={{ maxWidth: 140 }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={async () => {
+                try {
+                  const base = await api.config();
+                  const rest = stripEphemeralKeys(base);
+                  const next = {
+                    ...rest,
+                    regressionSignatureSimilarityThreshold: Math.min(
+                      1,
+                      Math.max(0, regressionSimilarity / 100)
+                    ),
+                  };
+                  const saved = await api.saveConfig(next);
+                  setCfg(saved);
+                  setJson(JSON.stringify(stripEphemeralKeys(saved), null, 2));
+                  const rs = saved.regressionSignatureSimilarityThreshold;
+                  if (typeof rs === 'number' && !Number.isNaN(rs)) {
+                    setRegressionSimilarity(Math.round(Math.min(1, Math.max(0, rs)) * 100));
+                  }
+                  alert('Regression signature settings saved.');
+                } catch (e) {
+                  alert(String(e.message || e));
+                }
+              }}
+            >
+              Save regression settings
             </button>
           </div>
         </div>

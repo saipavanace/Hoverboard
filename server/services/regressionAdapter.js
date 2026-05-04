@@ -71,12 +71,14 @@ export function scanRegressionFromTexts(entries, opts = {}) {
     filesScanned.push(label);
     failures.push(...scanLogText(text, patterns, { maxLines: maxLinesPerFile }));
   }
-  const bins = binFailures(failures);
+  const similarityThreshold = opts.similarityThreshold ?? 0;
+  const bins = binFailures(failures, { similarityThreshold });
   const sourceLabel = opts.sourceLabel ?? 'upload';
   return {
     rootDir: sourceLabel,
     filesScanned: filesScanned.length,
     failures: failures.length,
+    failureLines: failures,
     bins,
   };
 }
